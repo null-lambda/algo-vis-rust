@@ -1,4 +1,5 @@
 mod utils;
+mod view_model;
 mod voronoi;
 
 use rand::{rngs::SmallRng, Rng, SeedableRng};

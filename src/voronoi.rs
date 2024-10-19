@@ -32,6 +32,8 @@ mod cmp {
 pub mod geometry {
     use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 
+    use crate::utils::console_log;
+
     #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
     pub struct Ordered<T>(T);
 
@@ -227,7 +229,6 @@ pub mod geometry {
     }
 
     pub type Point<T> = PointNd<2, T>;
-    pub type Point3<T> = PointNd<3, T>;
 
     impl<T: Scalar> Point<T> {
         pub fn new(x: T, y: T) -> Self {
@@ -238,25 +239,6 @@ pub mod geometry {
             Point::new(-self[1], self[0])
         }
     }
-
-    #[derive(Debug, Clone, Copy)]
-    pub struct Angle<T>(pub Point<T>);
-
-    impl<T: Scalar> Angle<T> {
-        pub fn circular_cmp(&self, other: &Self) -> std::cmp::Ordering {
-            T::zero().partial_cmp(&self.0.cross(other.0)).unwrap()
-        }
-    }
-
-    impl<T: Scalar> PartialEq for Angle<T> {
-        fn eq(&self, other: &Self) -> bool {
-            debug_assert!(self.0 != PointNd([T::zero(), T::zero()]));
-            debug_assert!(other.0 != PointNd([T::zero(), T::zero()]));
-            self.0.cross(other.0) == T::zero()
-        }
-    }
-
-    impl<T: Scalar> Eq for Angle<T> {}
 
     // predicate 1 for voronoi diagram
     pub fn signed_area<T: Scalar>(p: Point<T>, q: Point<T>, r: Point<T>) -> T {
@@ -270,9 +252,10 @@ pub mod geometry {
         dir2: Point<f64>,
     ) -> Option<Point<f64>> {
         let denom = dir1.cross(dir2);
-        let numer = p1 * denom + p2 * (p2 - p1).cross(dir2);
+        let numer = p1 * denom + dir1 * (p2 - p1).cross(dir2);
         // f64ODO: add threshold
-        (denom != f64::zero()).then(|| numer * (f64::one() / denom))
+        let result = numer * denom.recip();
+        (!result[0].is_nan() && !result[1].is_nan()).then(|| result)
     }
 
     // predicate 2 for voronoi diagram
@@ -283,22 +266,24 @@ pub mod geometry {
 
     // predicate 3 for voronoi diagram
     pub fn breakpoint_x(left: Point<f64>, right: Point<f64>, sweepline: f64) -> f64 {
-        let mid = (left + right) * 0.5;
-        let half_delta = (right - left) * 0.5;
-        let Some(cc) = line_intersection(
-            mid,
-            half_delta.rot(),
-            Point::new(0.0, sweepline),
-            Point::new(1.0, 0.0),
-        ) else {
-            return (left[0] + right[0]) * 0.5;
-        };
-        let dx = 0.0.max((mid - cc).norm_sq() - half_delta.norm_sq().sqrt());
-        if left[1] < right[1] {
-            cc[0] - dx
-        } else {
-            cc[0] + dx
+        let y1 = left[1] - sweepline;
+        let y2 = right[1] - sweepline;
+        let dx = right[0] - left[0];
+
+        let a = y2 - y1;
+        let b_2 = y1 * dx;
+        let c = y1 * y2 * (y1 - y2) - y1 * dx * dx;
+
+        let det_4 = b_2 * b_2 - a * c;
+        let sign = a.signum() * dx.signum();
+        let mut x = left[0] + (-b_2 - sign * det_4.max(0.0).sqrt()) / a;
+        if !x.is_finite() {
+            x = left[0] - c / b_2;
+            if !x.is_finite() {
+                x = left[0] + dx * 0.5;
+            }
         }
+        x
     }
 }
 
@@ -330,13 +315,13 @@ pub mod graph {
     #[derive(Debug)]
     pub struct HalfEdge {
         pub start: usize,
-        pub site_left: usize,
+        pub face_left: usize,
         pub flip: usize,
     }
 
     #[derive(Debug)]
     pub struct Face {
-        adj_edge: usize,
+        edge: usize,
     }
 
     #[derive(Debug)]
@@ -679,9 +664,11 @@ pub mod builder {
     use std::{
         cmp::{Ordering, Reverse},
         collections::{BinaryHeap, HashSet},
+        iter,
     };
 
     use splay::{Branch, Node};
+    use wasm_bindgen::prelude::wasm_bindgen;
 
     use super::{
         cmp::Trivial,
@@ -708,9 +695,10 @@ pub mod builder {
         next: usize,
     }
 
-    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
     struct EventKey(u32);
 
+    #[derive(Debug)]
     struct RemovableHeap<T> {
         current_key: EventKey,
         heap: BinaryHeap<(T, Trivial<EventKey>)>,
@@ -747,10 +735,11 @@ pub mod builder {
         }
     }
 
+    #[derive(Debug)]
     pub struct Builder {
         events: RemovableHeap<(Reverse<(Ordered<f64>, Ordered<f64>)>, Trivial<Event>)>,
-        beachline: splay::Tree,
-        sweep: Ordered<f64>,
+        pub beachline: splay::Tree,
+        pub directrix: Ordered<f64>,
         pub graph: graph::Graph,
         _init: bool,
     }
@@ -760,7 +749,7 @@ pub mod builder {
             Self {
                 events: RemovableHeap::new(),
                 beachline: splay::Tree::new(),
-                sweep: f64::NEG_INFINITY.into(),
+                directrix: f64::NEG_INFINITY.into(),
                 graph: graph::Graph {
                     topo: graph::Topology {
                         verts: vec![],
@@ -794,12 +783,12 @@ pub mod builder {
             let idx_halfedge = graph.topo.half_edges.len();
             graph.topo.half_edges.push(HalfEdge {
                 start: graph::INF,
-                site_left: sites[0],
+                face_left: sites[0],
                 flip: idx_halfedge + 1,
             });
             graph.topo.half_edges.push(HalfEdge {
                 start: graph::UNSET,
-                site_left: sites[1],
+                face_left: sites[1],
                 flip: idx_halfedge,
             });
             splay::Breakpoint {
@@ -840,7 +829,7 @@ pub mod builder {
             self.beachline.insert(
                 Branch::Right,
                 splay::Breakpoint {
-                    site_right: 0,
+                    site_right: idx_site,
                     halfedge: graph::UNSET,
                 },
             );
@@ -858,12 +847,12 @@ pub mod builder {
             match event {
                 Event::Site(Site { idx: idx_site }) => {
                     let PointNd([px, py]) = self.graph.face_center[idx_site];
-                    self.sweep = Ordered::from(py);
+                    self.directrix = Ordered::from(py);
 
                     self.beachline.splay_by(|node| {
                         Ordered::from(px).cmp(&Self::eval_breakpoint_x(
                             &self.graph,
-                            self.sweep,
+                            self.directrix,
                             node,
                         ))
                     });
@@ -871,7 +860,7 @@ pub mod builder {
                     let root = self.beachline.root.as_ref().unwrap();
                     match Ordered::from(px).cmp(&Self::eval_breakpoint_x(
                         &self.graph,
-                        self.sweep,
+                        self.directrix,
                         root,
                     )) {
                         Ordering::Greater | Ordering::Equal => {
@@ -908,7 +897,7 @@ pub mod builder {
             true
         }
 
-        pub fn run(mut self) {
+        pub fn run(&mut self) {
             self.init();
             while self.step() {}
         }

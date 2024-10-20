@@ -1,0 +1,91 @@
+$picnic-primary: #7851A9;
+$picnic-transparency: 0.5;
+
+@import "./node_modules/picnic/src/picnic.scss";
+
+main {
+    margin: 0 auto;
+    width: 90%;
+}
+
+.label {
+    font-size: inherit;
+}
+
+input[type="range"] {
+    accent-color: $picnic-primary;
+}
+
+#play-pause[paused=true] {
+    background-color: #ff851b;
+}
+
+#play-pause[paused=false] {
+    background-color: #2ecc40;
+}
+
+#canvas {
+    justify-content: center;
+    aspect-ratio: 1;
+
+    >svg {
+        width: auto;
+        height: 100%;
+        max-height: 90vh;
+        border: 2px solid black;
+        border-radius: 3px;
+    }
+}
+
+.voronoi {
+    stroke-width: .5;
+
+    .site {
+        fill: black;
+    }
+
+    .site> {
+        .beachline {
+            fill: indigo;
+        }
+
+        .preprocess {
+            fill: gray;
+        }
+
+        .complete {
+            fill: salmon;
+        }
+    }
+
+    .parabola,
+    .breakpoint,
+    .beachline {
+        stroke: indigo;
+    }
+
+    .circumcircle,
+    .event-circle {
+        stroke: lightgreen;
+    }
+
+    .circumcircle {
+        fill: none;
+    }
+
+    .sweepline {
+        stroke: black;
+    }
+
+    .edge-delaunay {
+        stroke: salmon;
+    }
+
+    .edge-voronoi {
+        stroke: lightgray;
+    }
+
+    .vertex {
+        fill: lightgray;
+    }
+}

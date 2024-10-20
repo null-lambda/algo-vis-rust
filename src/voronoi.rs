@@ -28,11 +28,10 @@ pub mod cmp {
     }
 }
 
+#[allow(dead_code)]
 #[macro_use]
 pub mod geometry {
     use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
-
-    use crate::utils::console_log;
 
     #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
     pub struct Ordered<T>(T);
@@ -120,8 +119,6 @@ pub mod geometry {
             1.0
         }
     }
-    // impl Scalar for i64 {}
-    // impl Scalar for i32 {}
 
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub struct PointNd<const N: usize, T>(pub [T; N]);
@@ -313,12 +310,12 @@ pub mod graph {
     pub struct HalfEdge {
         pub vert: usize,
         pub face_left: usize,
-        pub flip: usize,
+        pub twin: usize,
     }
 
     #[derive(Debug, Copy, Clone)]
     pub struct Face {
-        half_edge: usize,
+        pub half_edge: usize,
     }
 
     #[derive(Debug)]
@@ -326,13 +323,6 @@ pub mod graph {
         pub verts: Vec<Vertex>,
         pub half_edges: Vec<HalfEdge>,
         pub faces: Vec<Face>,
-    }
-
-    impl Topology {
-        pub fn flipped(&mut self, idx_half_edge: usize) -> usize {
-            let half_edge = &mut self.half_edges[idx_half_edge];
-            half_edge.flip
-        }
     }
 
     #[derive(Debug)]
@@ -351,8 +341,6 @@ pub mod tag {
 
 pub mod builder {
     pub mod splay {
-        use crate::utils::console_log;
-
         // bottom-up splay tree for beachline
         use super::super::tag;
 
@@ -409,11 +397,6 @@ pub mod builder {
             pub value: Breakpoint,
         }
 
-        #[derive(Debug)]
-        pub struct Tree {
-            pub root: Link,
-        }
-
         impl Node {
             pub fn new(value: Breakpoint) -> Self {
                 Self {
@@ -453,10 +436,6 @@ pub mod builder {
                         child
                     })
                 }
-            }
-
-            fn is_root(&self) -> bool {
-                self.parent.is_none()
             }
 
             fn branch(node: NonNull<Self>) -> Option<(Branch, NonNull<Node>)> {
@@ -592,8 +571,6 @@ pub mod builder {
 
             pub fn insert_right(mut root: NonNull<Node>, mut new_node: NonNull<Node>) {
                 unsafe {
-                    // console_log!("before insert_right: {:?}", root.as_ref());
-
                     let right = root.as_mut().children[Right as usize];
                     if right.is_some() {
                         let next = root.as_ref().side[Right as usize].unwrap();
@@ -603,8 +580,6 @@ pub mod builder {
 
                     root.as_mut().attach(Right, Some(new_node));
                     new_node.as_mut().attach(Right, right);
-
-                    // console_log!("after insert_right: {:?}", root.as_ref());
                 }
             }
 
@@ -740,46 +715,6 @@ pub mod builder {
                 }
             }
         }
-
-        //#[test]
-        //fn test_splay_tree() {
-        //    //
-        //    let gen_breakpoint = || {
-        //        Node::new_nonnull(Breakpoint {
-        //            site: 0,
-        //            left_half_edge: 0,
-        //        })
-        //    };
-        //    let mut tree = gen_breakpoint();
-
-        //    unsafe {
-        //        for branch in [Left, Left, Right, Left, Left, Right, Right] {
-        //            // tree.insert(branch, gen_breakpoint());
-        //            Node::insert_right(tree, gen_breakpoint());
-        //            Node::validate_side_links(tree);
-        //            println!("insert {branch:?}, {:?}", tree.as_ref());
-        //        }
-        //        for i in 0..7 {
-        //            if i % 3 == 0 {
-        //                Node::splay_first(&mut tree);
-        //                Node::validate_side_links(tree);
-        //                Node::validate_parents(tree);
-        //                println!("splay first, {:?}", tree.as_ref());
-        //            } else {
-        //                Node::splay_last(&mut tree);
-        //                Node::validate_side_links(tree);
-        //                Node::validate_parents(tree);
-        //                println!("splay last, {:?}", tree.as_ref());
-        //            }
-
-        //            let mut tree_wrapped = Some(tree);
-        //            Node::pop_root(&mut tree_wrapped);
-        //            tree = tree_wrapped.unwrap();
-        //            Node::validate_side_links(tree);
-        //            println!("remove root, {:?}", tree.as_ref());
-        //        }
-        //    }
-        //}
     }
 
     use core::f64;
@@ -787,13 +722,10 @@ pub mod builder {
         cmp::Reverse,
         collections::{BinaryHeap, HashSet},
         fmt,
-        hash::Hash,
-        ptr::{self, NonNull},
+        ptr::NonNull,
     };
 
     use splay::{Branch, Node};
-
-    use crate::utils::console_log;
 
     use super::{
         cmp::Trivial,
@@ -850,29 +782,6 @@ pub mod builder {
         unsafe { NonNull::new_unchecked(pool.last_mut().unwrap().as_mut()) }
     }
 
-    fn new_breakpoint_node(
-        pool: &mut Vec<Box<Node>>,
-        graph: &mut graph::Graph,
-        sites: [usize; 2],
-    ) -> NonNull<Node> {
-        let idx_halfedge = graph.topo.half_edges.len();
-        graph.topo.half_edges.push(HalfEdge {
-            vert: graph::INF,
-            face_left: sites[0],
-            flip: idx_halfedge + 1,
-        });
-        graph.topo.half_edges.push(HalfEdge {
-            vert: graph::UNSET,
-            face_left: sites[1],
-            flip: idx_halfedge,
-        });
-        let value = splay::Breakpoint {
-            site: sites[1],
-            left_half_edge: idx_halfedge,
-        };
-        allocate_node(pool, value)
-    }
-
     fn eval_left_breakpoint_x(
         graph: &graph::Graph,
         sweep: Ordered<f64>,
@@ -913,15 +822,10 @@ pub mod builder {
             if geometry::signed_area(p0, p1, p2) >= 1e-9 {
                 return None;
             }
-            console_log!("{:?}", added_circles);
-            console_log!("{:?}", indices);
-
-            // indices.sort();
-            // if !added_circles.insert(indices) {
-            //     return None;
-            // }
-
-            console_log!("circumcenter: {:?}", geometry::circumcenter(p0, p1, p2));
+            indices.sort();
+            if !added_circles.insert(indices) {
+                return None;
+            }
 
             let center = geometry::circumcenter(p0, p1, p2)?;
             let radius = (center - p0).norm_sq().sqrt();
@@ -1007,6 +911,12 @@ pub mod builder {
                 site: idx,
                 left_half_edge: graph::UNSET,
             });
+
+            self.graph.topo.faces = (0..self.graph.face_center.len())
+                .map(|_| graph::Face {
+                    half_edge: graph::UNSET,
+                })
+                .collect();
         }
 
         pub fn step(&mut self) -> bool {
@@ -1016,14 +926,12 @@ pub mod builder {
             );
 
             loop {
-                let Some((Reverse((py, px)), Trivial(event))) = self.events.pop() else {
+                let Some((Reverse((py, _px)), Trivial(event))) = self.events.pop() else {
                     return false;
                 };
                 self.directrix = py;
                 match event {
                     Event::Site(Site { idx: idx_site }) => {
-                        console_log!("processing site event {:?}", idx_site);
-
                         let PointNd([px, _py]) = self.graph.face_center[idx_site];
 
                         Node::splay_last_by(&mut self.beachline, |node| {
@@ -1034,17 +942,39 @@ pub mod builder {
                         let old_site = unsafe { self.beachline.as_ref().value.site };
 
                         let left = self.beachline;
-                        let mid = new_breakpoint_node(
-                            &mut self.beachline_node_pool,
-                            &mut self.graph,
-                            [old_site, idx_site],
+                        let pool: &mut Vec<Box<Node>> = &mut self.beachline_node_pool;
+                        let graph: &mut graph::Graph = &mut self.graph;
+                        let idx_half_edge = graph.topo.half_edges.len();
+                        graph.topo.half_edges.push(HalfEdge {
+                            vert: graph::INF,
+                            face_left: idx_site,
+                            twin: idx_half_edge + 1,
+                        });
+                        graph.topo.half_edges.push(HalfEdge {
+                            vert: graph::INF,
+                            face_left: old_site,
+                            twin: idx_half_edge,
+                        });
+                        if graph.topo.faces[old_site].half_edge == graph::UNSET {
+                            graph.topo.faces[old_site].half_edge = idx_half_edge;
+                        }
+                        if graph.topo.faces[idx_site].half_edge == graph::UNSET {
+                            graph.topo.faces[idx_site].half_edge = idx_half_edge + 1;
+                        }
+                        let mid = allocate_node(
+                            pool,
+                            splay::Breakpoint {
+                                site: idx_site,
+                                left_half_edge: idx_half_edge + 1,
+                            },
                         );
-                        let right = new_breakpoint_node(
-                            &mut self.beachline_node_pool,
-                            &mut self.graph,
-                            [idx_site, old_site],
+                        let right = allocate_node(
+                            pool,
+                            splay::Breakpoint {
+                                site: old_site,
+                                left_half_edge: idx_half_edge,
+                            },
                         );
-
                         Node::insert_right(self.beachline, right);
                         Node::insert_right(self.beachline, mid);
 
@@ -1060,8 +990,6 @@ pub mod builder {
                         ));
                     }
                     Event::Circle(circle) => unsafe {
-                        console_log!("processing circle event: {:?}", circle);
-
                         if !check_circle_event(&circle) {
                             continue;
                         };
@@ -1069,10 +997,8 @@ pub mod builder {
                         let Circle { node, .. } = circle;
                         Node::splay(&mut self.beachline, node);
 
-                        let next = node.as_ref().side[Branch::Right as usize].unwrap();
+                        let mut next = node.as_ref().side[Branch::Right as usize].unwrap();
                         let prev = node.as_ref().side[Branch::Left as usize].unwrap();
-
-                        console_log!("before pop {:?}", self.beachline.as_ref());
 
                         let mut beachline: Option<NonNull<Node>> = Some(self.beachline);
                         Node::pop_root(&mut beachline);
@@ -1081,32 +1007,7 @@ pub mod builder {
                         };
                         self.beachline = beachline;
 
-                        console_log!("after pop {:?}", self.beachline.as_ref());
-                        Node::validate_side_links(self.beachline);
-
-                        let vert_idx = self.graph.topo.verts.len();
-                        self.graph
-                            .vert_coord
-                            .push(Point::new(px.into(), py.into()).into());
-
-                        let he1 = self.graph.topo.half_edges[node.as_ref().value.left_half_edge];
-                        let he2 = self.graph.topo.half_edges[next.as_ref().value.left_half_edge];
-                        self.graph.topo.half_edges[he1.flip].vert = vert_idx;
-                        self.graph.topo.half_edges[he2.flip].vert = vert_idx;
-
-                        let he3_idx = self.graph.topo.half_edges.len();
-                        self.graph.topo.half_edges.push(HalfEdge {
-                            vert: vert_idx,
-                            face_left: prev.as_ref().value.site,
-                            flip: he3_idx + 1,
-                        });
-
-                        self.graph.topo.half_edges.push(HalfEdge {
-                            vert: graph::UNSET,
-                            face_left: next.as_ref().value.site,
-                            flip: he3_idx,
-                        });
-
+                        // add new circle events
                         self.events.extend(
                             new_circle_event(prev, &self.graph, &mut self.added_circles)
                                 .into_iter(),
@@ -1115,6 +1016,51 @@ pub mod builder {
                             new_circle_event(next, &self.graph, &mut self.added_circles)
                                 .into_iter(),
                         );
+
+                        Node::validate_side_links(self.beachline);
+                        Node::validate_parents(self.beachline);
+
+                        let vert_idx = self.graph.topo.verts.len();
+                        debug_assert_eq!(self.graph.vert_coord.len(), vert_idx);
+
+                        let i_he1 = node.as_ref().value.left_half_edge;
+                        let i_he2 = next.as_ref().value.left_half_edge;
+                        let he1 = self.graph.topo.half_edges[i_he1];
+                        let he2 = self.graph.topo.half_edges[i_he2];
+
+                        self.graph.topo.half_edges[i_he1].vert = vert_idx;
+                        self.graph.topo.half_edges[i_he2].vert = vert_idx;
+
+                        let f1 = he1.face_left;
+                        let f2 = self.graph.topo.half_edges[he1.twin].face_left;
+                        let f2_alt = he2.face_left;
+                        let f3 = self.graph.topo.half_edges[he2.twin].face_left;
+                        debug_assert_eq!(f2, f2_alt);
+
+                        let pf1 = self.graph.face_center[f1];
+                        let pf2 = self.graph.face_center[f2];
+                        let pf3 = self.graph.face_center[f3];
+                        let center =
+                            geometry::circumcenter(pf1, pf2, pf3).expect("Missing circumcenter");
+
+                        let he3_idx = self.graph.topo.half_edges.len();
+                        self.graph.topo.half_edges.push(HalfEdge {
+                            vert: vert_idx,
+                            face_left: next.as_ref().value.site,
+                            twin: he3_idx + 1,
+                        });
+                        self.graph.topo.half_edges.push(HalfEdge {
+                            vert: graph::INF,
+                            face_left: prev.as_ref().value.site,
+                            twin: he3_idx,
+                        });
+                        next.as_mut().value.left_half_edge = he3_idx + 1;
+
+                        self.graph.vert_coord.push(center);
+                        self.graph
+                            .topo
+                            .verts
+                            .push(graph::Vertex { half_edge: he3_idx });
                     },
                 }
                 Node::validate_parents(self.beachline);
@@ -1129,26 +1075,5 @@ pub mod builder {
             self.init();
             while self.step() {}
         }
-    }
-
-    #[test]
-    fn test_builder() {
-        let mut seed = 42u64;
-        let mut rng = std::iter::from_fn(move || {
-            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
-            Some(seed)
-        });
-
-        let mut builder = Builder::new();
-        let n = 20;
-        let mut points = vec![];
-        for _ in 0..n {
-            let x = rng.next().unwrap() % 100;
-            let y = rng.next().unwrap() % 100;
-            points.push(Point::new(x as f64, y as f64));
-        }
-
-        builder.add_points(points);
-        builder.run();
     }
 }

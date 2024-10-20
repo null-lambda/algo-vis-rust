@@ -221,8 +221,8 @@ impl ViewModel {
                 .chain(iter::once(self.bbox[0] + self.bbox[2]))
                 .collect();
 
-            // console_log!("{:?}", sites_inorder.iter().map(|p| p).collect::<Vec<_>>());
-            // console_log!("{:?}", breakpoints);
+            console_log!("{:?}", sites_inorder.iter().map(|p| p).collect::<Vec<_>>());
+            console_log!("{:?}", breakpoints);
 
             for i in 0..sites_inorder.len() {
                 let site = &sites_inorder[i];
@@ -287,10 +287,15 @@ impl ViewModel {
         let voronoi::graph::Graph {
             vert_coord,
             face_center,
-            topo: voronoi::graph::Topology { half_edges, .. },
+            topo:
+                voronoi::graph::Topology {
+                    verts,
+                    half_edges,
+                    faces,
+                },
         } = &self.model.graph;
 
-        for &h1 in half_edges {
+        for (i_h1, &h1) in half_edges.iter().enumerate() {
             let h2 = half_edges[h1.twin];
             let get_p = |h: HalfEdge| {
                 if h.vert != voronoi::graph::INF && h.vert != voronoi::graph::UNSET {
@@ -299,16 +304,14 @@ impl ViewModel {
                     let f1 = face_center[h.face_left];
                     let f2 = face_center[half_edges[h.twin].face_left];
                     let mid = (f1 + f2) * 0.5;
-                    let mut dir = (f2 - f1).rot();
+                    let mut dir = (f1 - f2).rot();
                     dir = dir * dir.norm_sq().sqrt().recip();
-                    mid + dir * 5e2
+                    mid + dir * 1e3
                 }
             };
             let p1 = get_p(h1);
             let p2 = get_p(h2);
 
-            writeln!(svg, "{}", Circle([p1[0], p1[1], 1.0], "class='vertex'")).unwrap();
-            writeln!(svg, "{}", Circle([p2[0], p2[1], 1.0], "class='vertex'")).unwrap();
             writeln!(
                 svg,
                 "{}",
@@ -324,7 +327,7 @@ impl ViewModel {
                 continue;
             }
             let h2 = half_edges[i_h2];
-            // console_log!("{:?}", (i_h1, h1, i_h2, h2));
+            console_log!("{:?}", (i_h1, h1, i_h2, h2));
 
             let p1 = face_center[h1.face_left];
             let p2 = face_center[h2.face_left];

@@ -294,7 +294,7 @@ pub mod tag {
     }
 }
 
-// Doubly connected edge list
+// Doubly connected edge list (WIP)
 pub mod graph {
     use super::geometry::Point;
 
@@ -311,6 +311,7 @@ pub mod graph {
         pub vert: usize,
         pub face_left: usize,
         pub twin: usize,
+        // pub next: usize, // TODO!
     }
 
     #[derive(Debug, Copy, Clone)]
@@ -466,7 +467,6 @@ pub mod builder {
 
                     Some(())
                 }
-                // println!("after rotate:\n{:?}", self);
             }
 
             pub fn validate_parents(node: NonNull<Self>) {
@@ -920,10 +920,13 @@ pub mod builder {
         }
 
         pub fn step(&mut self) -> bool {
-            debug_assert!(
-                self._init,
-                "Builder::init must be called before Builder::step"
-            );
+            // debug_assert!(
+            //     self._init,
+            //     "Builder::init must be called before Builder::step"
+            // );
+            if !self._init {
+                return false;
+            }
 
             loop {
                 let Some((Reverse((py, _px)), Trivial(event))) = self.events.pop() else {
@@ -1066,7 +1069,6 @@ pub mod builder {
                 Node::validate_parents(self.beachline);
                 Node::validate_side_links(self.beachline);
 
-                println!("{:?}", self.beachline);
                 return true;
             }
         }

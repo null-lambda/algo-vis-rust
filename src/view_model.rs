@@ -1,4 +1,3 @@
-use crate::utils::console_log;
 use crate::voronoi::builder::{self, Builder, Event};
 use crate::voronoi::cmp::Trivial;
 use crate::voronoi::geometry::Point;
@@ -221,9 +220,6 @@ impl ViewModel {
                 .chain(iter::once(self.bbox[0] + self.bbox[2]))
                 .collect();
 
-            // console_log!("{:?}", sites_inorder.iter().map(|p| p).collect::<Vec<_>>());
-            // console_log!("{:?}", breakpoints);
-
             for i in 0..sites_inorder.len() {
                 let site = &sites_inorder[i];
                 let x0 = breakpoints[i];
@@ -293,14 +289,14 @@ impl ViewModel {
         for &h1 in half_edges {
             let h2 = half_edges[h1.twin];
             let get_p = |h: HalfEdge| {
-                if h.vert != voronoi::graph::INF && h.vert != voronoi::graph::UNSET {
+                if h.vert != voronoi::graph::INF {
                     vert_coord[h.vert]
                 } else {
                     let f1 = face_center[h.face_left];
                     let f2 = face_center[half_edges[h.twin].face_left];
                     let mid = (f1 + f2) * 0.5;
                     let mut dir = (f2 - f1).rot();
-                    dir = dir * dir.norm_sq().sqrt().recip();
+                    dir = dir * (dir.norm_sq().sqrt() + 1e-9).recip();
                     mid + dir * 5e2
                 }
             };
@@ -324,7 +320,6 @@ impl ViewModel {
                 continue;
             }
             let h2 = half_edges[i_h2];
-            // console_log!("{:?}", (i_h1, h1, i_h2, h2));
 
             let p1 = face_center[h1.face_left];
             let p2 = face_center[h2.face_left];
@@ -353,21 +348,22 @@ impl ViewModel {
     pub fn render_to_svg(&self) -> String {
         let mut svg: Vec<u8> = vec![];
 
-        console_log!("{:?}", unsafe { self.model.beachline.as_ref() });
-
         let bbox = self.bbox;
         write!(
             svg,
-            r#"<svg class="voronoi" width="100%" height="100%" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg">"# , 
+            r#"<svg class="voronoi" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg">"#,
             bbox[0], bbox[1], bbox[2], bbox[3]
-        ).unwrap();
+        )
+        .unwrap();
 
-        let mut site_markers = self.gen_site_marker();
-        self.render_half_edges(&mut svg);
-        self.render_circ_events(&mut svg, &mut site_markers);
-        self.render_beachlines(&mut svg, &mut site_markers);
-        self.render_sweepline(&mut svg);
-        self.render_sites(&mut svg, &site_markers);
+        if !self.get_points().is_empty() {
+            let mut site_markers = self.gen_site_marker();
+            self.render_half_edges(&mut svg);
+            self.render_circ_events(&mut svg, &mut site_markers);
+            self.render_beachlines(&mut svg, &mut site_markers);
+            self.render_sweepline(&mut svg);
+            self.render_sites(&mut svg, &site_markers);
+        }
 
         write!(svg, "</svg>").unwrap();
 
@@ -384,6 +380,12 @@ impl ViewModel {
 
     pub fn step(&mut self) -> bool {
         self.model.step()
+    }
+
+    pub fn reset(&mut self) {
+        let points = self.get_points().to_vec();
+        self.model = Builder::new();
+        self.model.add_points(points);
     }
 
     pub fn clear(&mut self) {

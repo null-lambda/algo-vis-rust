@@ -1,4 +1,4 @@
-mod cmp {
+pub mod cmp {
     use std::cmp::Ordering;
 
     // x <= y iff x = y
@@ -252,35 +252,32 @@ pub mod geometry {
         dir2: Point<f64>,
     ) -> Option<Point<f64>> {
         let denom = dir1.cross(dir2);
-        let numer = p1 * denom + dir1 * (p2 - p1).cross(dir2);
-        // f64ODO: add threshold
-        let result = numer * denom.recip();
-        (!result[0].is_nan() && !result[1].is_nan()).then(|| result)
+        let result = p1 + dir1 * (p2 - p1).cross(dir2) * denom.recip();
+        (result[0].is_finite() && result[1].is_finite()).then(|| result)
+    }
+
+    pub fn circumcenter(p: Point<f64>, q: Point<f64>, r: Point<f64>) -> Option<Point<f64>> {
+        line_intersection((p + q) * 0.5, (q - p).rot(), (p + r) * 0.5, (r - p).rot())
     }
 
     // predicate 2 for voronoi diagram
-    pub fn circumcenter(p: Point<f64>, q: Point<f64>, r: Point<f64>) -> Option<Point<f64>> {
-        let d = f64::one() / (f64::one() + f64::one());
-        line_intersection((p + q) * d, (q - p).rot(), (p + r) * d, (r - p).rot())
-    }
-
-    // predicate 3 for voronoi diagram
     pub fn breakpoint_x(left: Point<f64>, right: Point<f64>, sweepline: f64) -> f64 {
         let y1 = left[1] - sweepline;
         let y2 = right[1] - sweepline;
-        let dx = right[0] - left[0];
+        let xm = (left[0] + right[0]) * 0.5;
+        let dx_half = (right[0] - left[0]) * 0.5;
 
         let a = y2 - y1;
-        let b_2 = y1 * dx;
-        let c = y1 * y2 * (y1 - y2) - y1 * dx * dx;
+        let b_2 = (y1 + y2) * dx_half;
+        let c = y1 * y2 * (y1 - y2) - (y1 - y2) * dx_half * dx_half;
 
         let det_4 = b_2 * b_2 - a * c;
-        let sign = a.signum() * dx.signum();
-        let mut x = left[0] + (-b_2 - sign * det_4.max(0.0).sqrt()) / a;
+        let sign = a.signum() * (y2 - y1).signum();
+        let mut x = xm + (-b_2 - sign * det_4.max(0.0).sqrt()) / a;
         if !x.is_finite() {
-            x = left[0] - c / b_2;
+            x = xm - c * 0.5 / b_2;
             if !x.is_finite() {
-                x = left[0] + dx * 0.5;
+                x = xm + dx_half;
             }
         }
         x
@@ -307,21 +304,21 @@ pub mod graph {
     pub const UNSET: usize = 1 << 31;
     pub const INF: usize = 1 << 30;
 
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     pub struct Vertex {
-        pub halfedge: usize,
+        pub half_edge: usize,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     pub struct HalfEdge {
-        pub start: usize,
+        pub vert: usize,
         pub face_left: usize,
         pub flip: usize,
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Copy, Clone)]
     pub struct Face {
-        edge: usize,
+        half_edge: usize,
     }
 
     #[derive(Debug)]
@@ -329,6 +326,13 @@ pub mod graph {
         pub verts: Vec<Vertex>,
         pub half_edges: Vec<HalfEdge>,
         pub faces: Vec<Face>,
+    }
+
+    impl Topology {
+        pub fn flipped(&mut self, idx_half_edge: usize) -> usize {
+            let half_edge = &mut self.half_edges[idx_half_edge];
+            half_edge.flip
+        }
     }
 
     #[derive(Debug)]
@@ -346,14 +350,15 @@ pub mod tag {
 }
 
 pub mod builder {
-    mod splay {
-        // top-down splay tree for beachline
+    pub mod splay {
+        use crate::utils::console_log;
+
+        // bottom-up splay tree for beachline
         use super::super::tag;
 
         use std::{
-            borrow::BorrowMut,
             cmp::Ordering,
-            fmt, iter, mem,
+            fmt, iter,
             ptr::{self, NonNull},
         };
 
@@ -388,211 +393,297 @@ pub mod builder {
             }
         }
 
-        type OwnedLink = Option<Box<Node>>;
-        type RefLink = Option<NonNull<Node>>;
+        type Link = Option<NonNull<Node>>;
 
         #[derive(Debug)]
         pub struct Breakpoint {
-            pub site_right: usize,
-            pub halfedge: usize,
+            pub site: usize,
+            pub left_half_edge: usize,
         }
 
         pub struct Node {
             tag: tag::Tag,
-            pub children: [OwnedLink; 2], // binary search tree structure
-            pub side: [RefLink; 2],       // linked list structure
+            pub children: [Link; 2], // binary search tree structure
+            pub side: [Link; 2],     // linked list structure
+            pub parent: Link,
             pub value: Breakpoint,
         }
 
         #[derive(Debug)]
         pub struct Tree {
-            pub root: OwnedLink,
+            pub root: Link,
         }
 
         impl Node {
-            fn new(value: Breakpoint) -> Self {
+            pub fn new(value: Breakpoint) -> Self {
                 Self {
                     tag: tag::next(),
                     children: [None, None],
                     side: [None, None],
+                    parent: None,
                     value,
                 }
             }
 
-            fn link_sides(
-                dir: Branch,
-                mut lhs: impl BorrowMut<Self>,
-                mut rhs: impl BorrowMut<Self>,
-            ) {
-                lhs.borrow_mut().side[dir.inv() as usize] = Some(NonNull::from(rhs.borrow()));
-                rhs.borrow_mut().side[dir as usize] = Some(NonNull::from(lhs.borrow()));
-            }
-        }
-
-        impl Tree {
-            pub fn new() -> Self {
-                Self { root: None }
+            pub fn new_nonnull(value: Breakpoint) -> NonNull<Self> {
+                unsafe { NonNull::new_unchecked(Box::into_raw(Box::new(Self::new(value)))) }
             }
 
-            pub fn splay_by<F>(self: &mut Self, mut cmp: F)
+            fn link_sides(mut lhs: NonNull<Self>, mut rhs: NonNull<Self>) {
+                unsafe {
+                    lhs.as_mut().side[Right as usize] = Some(rhs);
+                    rhs.as_mut().side[Left as usize] = Some(lhs);
+                }
+            }
+
+            fn attach(&mut self, branch: Branch, child: Option<NonNull<Self>>) {
+                unsafe {
+                    debug_assert_ne!(Some(self as *mut _), child.map(|x| x.as_ptr()));
+                    self.children[branch as usize] = child;
+                    if let Some(mut child) = child {
+                        child.as_mut().parent = Some(self.into());
+                    }
+                }
+            }
+
+            fn detach(&mut self, branch: Branch) -> Option<NonNull<Self>> {
+                unsafe {
+                    self.children[branch as usize].take().map(|mut child| {
+                        child.as_mut().parent = None;
+                        child
+                    })
+                }
+            }
+
+            fn is_root(&self) -> bool {
+                self.parent.is_none()
+            }
+
+            fn branch(node: NonNull<Self>) -> Option<(Branch, NonNull<Node>)> {
+                unsafe {
+                    node.as_ref().parent.map(|parent| {
+                        let branch = match parent.as_ref().children[Branch::Left as usize] {
+                            Some(child) if ptr::eq(node.as_ptr(), child.as_ptr()) => Branch::Left,
+                            _ => Branch::Right,
+                        };
+                        (branch, parent)
+                    })
+                }
+            }
+
+            fn rotate(mut node: NonNull<Self>) -> Option<()> {
+                unsafe {
+                    let (branch, mut parent) = Node::branch(node)?;
+
+                    let child = node.as_mut().detach(branch.inv());
+                    parent.as_mut().attach(branch, child);
+
+                    if let Some((grandbranch, mut grandparent)) = Node::branch(parent) {
+                        grandparent.as_mut().attach(grandbranch, Some(node));
+                    } else {
+                        node.as_mut().parent = None;
+                    }
+                    node.as_mut().attach(branch.inv(), Some(parent));
+
+                    Some(())
+                }
+                // println!("after rotate:\n{:?}", self);
+            }
+
+            pub fn validate_parents(node: NonNull<Self>) {
+                unsafe {
+                    if let Some((branch, parent)) = Node::branch(node) {
+                        debug_assert_eq!(
+                            node.as_ptr(),
+                            parent.as_ref().children[branch as usize].unwrap().as_ptr(),
+                            "Parent's child pointer does not point to self"
+                        );
+                    }
+                    for branch in Branch::iter() {
+                        if let Some(child) = node.as_ref().children[branch as usize] {
+                            debug_assert_eq!(
+                                node.as_ptr(),
+                                child.as_ref().parent.unwrap().as_ptr(),
+                                "Child's parent pointer does not point to self: {:?} {:?}",
+                                node,
+                                child
+                            );
+                            debug_assert_ne!(child.as_ptr(), node.as_ptr(), "Self loop detected");
+                        }
+                    }
+                }
+            }
+
+            pub fn splay(root: &mut NonNull<Node>, node: NonNull<Node>) {
+                while let Some((branch, parent)) = Node::branch(node) {
+                    if let Some((grandbranch, _)) = Node::branch(parent) {
+                        if branch == grandbranch {
+                            Node::rotate(parent);
+                        } else {
+                            Node::rotate(node);
+                        }
+                    }
+                    Node::rotate(node);
+                }
+                *root = node;
+            }
+
+            // splay the last truthy element in [true, ..., true, false, ..., false]
+            // if there is no such element, return false
+            pub fn splay_last_by<F>(root: &mut NonNull<Node>, pred: F) -> bool
             where
-                F: FnMut(&Node) -> Ordering,
+                F: Fn(&Node) -> bool,
             {
-                let Some(root) = self.root.as_mut() else {
-                    return;
-                };
-                let mut side_nodes = [vec![], vec![]];
-
-                // cmp is called at most once for each nodes
-                let mut ord = cmp(&root);
-                loop {
-                    let branch = match ord {
-                        Ordering::Equal => break,
-                        Ordering::Less => Left,
-                        Ordering::Greater => Right,
-                    };
-
-                    let Some(mut child) = root.children[branch as usize].take() else {
-                        break;
-                    };
-                    let child_ord = cmp(&child);
-
-                    if child_ord == ord {
-                        root.children[branch as usize] =
-                            child.children[branch.inv() as usize].take();
-                        mem::swap(root, &mut child);
-                        root.children[branch.inv() as usize] = Some(child);
-
-                        let Some(next_child) = root.children[branch as usize].take() else {
+                unsafe {
+                    let mut current = *root;
+                    let mut last_pred;
+                    loop {
+                        last_pred = pred(current.as_ref());
+                        let branch = if last_pred { Right } else { Left };
+                        let Some(child) = current.as_ref().children[branch as usize] else {
                             break;
                         };
-                        child = next_child;
-
-                        ord = cmp(&child);
-                    } else {
-                        ord = child_ord;
+                        current = child;
                     }
-                    side_nodes[branch.inv() as usize].push(mem::replace(root, child));
-                }
-
-                for (branch, nodes) in side_nodes.into_iter().enumerate() {
-                    root.children[branch] = nodes.into_iter().rev().fold(
-                        root.children[branch].take(),
-                        |acc, mut node| {
-                            node.children[Branch::from(branch).inv() as usize] = acc;
-                            Some(node)
-                        },
+                    if !last_pred {
+                        let Some(left) = current.as_ref().side[Left as usize] else {
+                            return false;
+                        };
+                        current = left;
+                    }
+                    debug_assert!(
+                        pred(current.as_ref())
+                            && current.as_ref().children[Right as usize]
+                                .map_or(true, |x| !pred(x.as_ref()))
                     );
+                    Node::splay(root, current);
+                    true
                 }
             }
 
-            pub fn splay_first(&mut self) {
-                self.splay_by(|_| Ordering::Less);
-            }
-
-            pub fn splay_last(&mut self) {
-                self.splay_by(|_| Ordering::Greater);
-            }
-
-            pub fn insert(&mut self, branch: Branch, value: Breakpoint) {
-                let mut new_node = Box::new(Node::new(value));
-                let Some(root) = self.root.as_mut() else {
-                    self.root = Some(new_node);
-                    return;
-                };
-
-                let mut side = root.children[branch as usize].take();
-                side.as_mut()
-                    .map(|side| Node::link_sides(branch, side.as_mut(), new_node.as_mut()));
-                Node::link_sides(branch, new_node.as_mut(), root.as_mut());
-
-                new_node.children[branch as usize] = side;
-                root.children[branch as usize] = Some(new_node);
-            }
-
-            pub fn pop_root(&mut self) -> Option<Box<Node>> {
-                let mut root = self.root.take()?;
-
-                let mut left = root.children[Left as usize].take();
-                let mut right = root.children[Right as usize].take();
-
+            pub fn splay_by<F>(root: &mut NonNull<Node>, cmp: F)
+            where
+                F: Fn(&Node) -> Ordering,
+            {
                 unsafe {
-                    match (left.as_mut(), right.as_mut()) {
+                    let mut current = *root;
+                    loop {
+                        let branch = match cmp(current.as_ref()) {
+                            Ordering::Less => Left,
+                            Ordering::Greater => Right,
+                            Ordering::Equal => break,
+                        };
+                        let Some(child) = current.as_ref().children[branch as usize] else {
+                            break;
+                        };
+                        current = child;
+                    }
+                    Node::splay(root, current);
+                }
+            }
+
+            pub fn splay_first(root: &mut NonNull<Node>) {
+                Node::splay_by(root, |_| Ordering::Less);
+            }
+
+            pub fn splay_last(root: &mut NonNull<Node>) {
+                Node::splay_by(root, |_| Ordering::Greater);
+            }
+
+            pub fn insert_right(mut root: NonNull<Node>, mut new_node: NonNull<Node>) {
+                unsafe {
+                    // console_log!("before insert_right: {:?}", root.as_ref());
+
+                    let right = root.as_mut().children[Right as usize];
+                    if right.is_some() {
+                        let next = root.as_ref().side[Right as usize].unwrap();
+                        Node::link_sides(new_node, next);
+                    }
+                    Node::link_sides(root, new_node);
+
+                    root.as_mut().attach(Right, Some(new_node));
+                    new_node.as_mut().attach(Right, right);
+
+                    // console_log!("after insert_right: {:?}", root.as_ref());
+                }
+            }
+
+            pub fn pop_root(root: &mut Option<NonNull<Node>>) -> Option<NonNull<Node>> {
+                unsafe {
+                    let mut old_root = (*root)?;
+
+                    let left = old_root.as_mut().detach(Left);
+                    let right = old_root.as_mut().detach(Right);
+
+                    match (left, right) {
                         (Some(_), Some(_)) => {
-                            let mut prev = root.side[Left as usize].unwrap();
-                            let mut next = root.side[Right as usize].unwrap();
-                            Node::link_sides(Left, prev.as_mut(), next.as_mut());
+                            let prev = old_root.as_ref().side[Left as usize].unwrap();
+                            let next = old_root.as_ref().side[Right as usize].unwrap();
+                            Node::link_sides(prev, next);
 
-                            let mut left = Tree { root: left };
-                            left.splay_last();
-                            let mut left = left.root.unwrap();
-                            debug_assert!(left.children[Right as usize].is_none());
+                            let mut left = left.unwrap();
+                            // Node::splay_last(&mut left);
+                            Node::splay(&mut left, prev);
+                            debug_assert!(left.as_ref().children[Right as usize].is_none());
 
-                            left.children[Right as usize] = right;
-                            self.root = Some(left);
+                            left.as_mut().attach(Right, right);
+                            *root = Some(left);
                         }
                         (Some(_), None) => {
-                            root.side[Left as usize].unwrap().as_mut().side[Right as usize] = None;
-                            self.root = left;
+                            let mut left = left.unwrap();
+                            Node::splay_last(&mut left);
+                            left.as_mut().side[Right as usize] = None;
+                            *root = Some(left);
                         }
                         (None, Some(_)) => {
-                            root.side[Right as usize].unwrap().as_mut().side[Left as usize] = None;
-                            self.root = right;
+                            let mut right = right.unwrap();
+                            Node::splay_first(&mut right);
+                            right.as_mut().side[Left as usize] = None;
+                            *root = Some(right);
                         }
-                        (None, None) => {}
+                        (None, None) => {
+                            *root = None;
+                        }
                     }
-                    Some(root)
+                    old_root.as_mut().side = [None, None];
+                    Some(old_root)
                 }
             }
 
             // Test whether the linked list structure is valid
-            pub fn validate_side_links(&self) {
+            pub fn validate_side_links(root: NonNull<Node>) {
                 if !cfg!(debug_assertions) {
                     return;
                 }
 
-                // grab all nodes in inorder
-                let mut inorder: Vec<&Box<Node>> = vec![];
-                let mut current: Option<&Box<Node>> = self.root.as_ref();
-                let mut stack: Vec<&Box<Node>> = vec![];
-                while current.is_some() || !stack.is_empty() {
-                    while let Some(node) = current {
-                        stack.push(node);
-                        current = node.children[Left as usize].as_ref();
-                    }
-                    current = stack.pop();
-                    inorder.push(current.unwrap());
-                    current = current.unwrap().children[Right as usize].as_ref();
-                }
+                unsafe {
+                    // grab all nodes in inorder
+                    let mut inorder = vec![];
+                    Node::inorder(root, |node| inorder.push(node));
 
-                // check the linked list structure
-                for i in 0..inorder.len() {
-                    let node: &Box<Node> = inorder[i];
-                    let prev = (i >= 1).then(|| inorder[i - 1]);
-                    let next = (i + 1 < inorder.len()).then(|| inorder[i + 1]);
+                    // check the linked list structure
+                    for i in 0..inorder.len() {
+                        let node: NonNull<Node> = inorder[i];
+                        let prev = (i >= 1).then(|| inorder[i - 1]);
+                        let next = (i + 1 < inorder.len()).then(|| inorder[i + 1]);
 
-                    unsafe {
                         fn option_nonnull_to_ptr<T>(x: Option<NonNull<T>>) -> *const T {
                             x.map_or(ptr::null(), |x| x.as_ptr())
                         }
 
-                        fn option_box_to_ptr<T>(x: Option<&Box<T>>) -> *const T {
-                            x.map_or(ptr::null(), |x| x.as_ref())
-                        }
-
+                        debug_assert!(ptr::eq(
+                            option_nonnull_to_ptr(node.as_ref().side[Left as usize]),
+                            option_nonnull_to_ptr(prev)
+                        ));
                         debug_assert!(
                             ptr::eq(
-                                option_nonnull_to_ptr(node.side[Left as usize]),
-                                option_box_to_ptr(prev)
+                                option_nonnull_to_ptr(node.as_ref().side[Right as usize]),
+                                option_nonnull_to_ptr(next),
                             ),
-                            // "prev_next: {:?}, node_prev: {:?}",
-                            // prev.map(|x| x.as_ref().side[Right as usize]),
-                            // node.side[Left as usize].map(|x| x.as_ref())
+                            "side_right: {:?}, inorder_right: {:?}",
+                            node.as_ref().side[Right as usize],
+                            next
                         );
-                        debug_assert!(ptr::eq(
-                            option_nonnull_to_ptr(node.side[Right as usize]),
-                            option_box_to_ptr(next)
-                        ));
                         if let Some(prev) = prev {
                             debug_assert!(ptr::eq(
                                 option_nonnull_to_ptr(prev.as_ref().side[Right as usize]),
@@ -608,67 +699,101 @@ pub mod builder {
                     }
                 }
             }
+
+            pub fn inorder<F>(root: NonNull<Node>, mut visitor: F)
+            where
+                F: FnMut(NonNull<Node>),
+            {
+                pub fn inner<F>(node: NonNull<Node>, visitor: &mut F)
+                where
+                    F: FnMut(NonNull<Node>),
+                {
+                    unsafe {
+                        if let Some(left) = node.as_ref().children[Left as usize] {
+                            inner(left, visitor);
+                        }
+                        visitor(node);
+                        if let Some(right) = node.as_ref().children[Right as usize] {
+                            inner(right, visitor);
+                        }
+                    }
+                }
+
+                inner(root, &mut visitor);
+            }
         }
 
         impl fmt::Debug for Node {
             fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                write!(
-                    f,
-                    "{} {:?} {}",
-                    self.children[Left as usize]
-                        .as_ref()
-                        .map_or("_".to_owned(), |x| format!("({:?})", x)),
-                    self.tag,
-                    self.children[Right as usize]
-                        .as_ref()
-                        .map_or("_".to_owned(), |x| format!("({:?})", x)),
-                )
-            }
-        }
-
-        #[test]
-        fn test_splay_tree() {
-            //
-            let mut tree = Tree::new();
-
-            let gen_breakpoint = || Breakpoint {
-                site_right: 0,
-                halfedge: 0,
-            };
-
-            for branch in [Left, Left, Right, Left, Left, Right, Right] {
-                tree.insert(branch, gen_breakpoint());
-                tree.validate_side_links();
-                println!("insert {branch:?}, {:?}", tree);
-            }
-            for i in 0..7 {
-                if i % 3 == 0 {
-                    tree.splay_first();
-                    tree.validate_side_links();
-                    println!("splay first, {:?}", tree);
-                } else {
-                    tree.splay_last();
-                    tree.validate_side_links();
-                    println!("splay last, {:?}", tree);
+                unsafe {
+                    write!(
+                        f,
+                        "{} {:?} {}",
+                        self.children[Left as usize]
+                            .as_ref()
+                            .map_or("_".to_owned(), |x| format!("({:?})", x.as_ref())),
+                        self.tag,
+                        self.children[Right as usize]
+                            .as_ref()
+                            .map_or("_".to_owned(), |x| format!("({:?})", x.as_ref())),
+                    )
                 }
-
-                debug_assert!(tree.pop_root().is_some());
-                tree.validate_side_links();
-                println!("remove root, {:?}", tree);
             }
-            debug_assert!(tree.pop_root().is_none());
         }
+
+        //#[test]
+        //fn test_splay_tree() {
+        //    //
+        //    let gen_breakpoint = || {
+        //        Node::new_nonnull(Breakpoint {
+        //            site: 0,
+        //            left_half_edge: 0,
+        //        })
+        //    };
+        //    let mut tree = gen_breakpoint();
+
+        //    unsafe {
+        //        for branch in [Left, Left, Right, Left, Left, Right, Right] {
+        //            // tree.insert(branch, gen_breakpoint());
+        //            Node::insert_right(tree, gen_breakpoint());
+        //            Node::validate_side_links(tree);
+        //            println!("insert {branch:?}, {:?}", tree.as_ref());
+        //        }
+        //        for i in 0..7 {
+        //            if i % 3 == 0 {
+        //                Node::splay_first(&mut tree);
+        //                Node::validate_side_links(tree);
+        //                Node::validate_parents(tree);
+        //                println!("splay first, {:?}", tree.as_ref());
+        //            } else {
+        //                Node::splay_last(&mut tree);
+        //                Node::validate_side_links(tree);
+        //                Node::validate_parents(tree);
+        //                println!("splay last, {:?}", tree.as_ref());
+        //            }
+
+        //            let mut tree_wrapped = Some(tree);
+        //            Node::pop_root(&mut tree_wrapped);
+        //            tree = tree_wrapped.unwrap();
+        //            Node::validate_side_links(tree);
+        //            println!("remove root, {:?}", tree.as_ref());
+        //        }
+        //    }
+        //}
     }
 
     use core::f64;
     use std::{
-        cmp::{Ordering, Reverse},
+        cmp::Reverse,
         collections::{BinaryHeap, HashSet},
-        iter,
+        fmt,
+        hash::Hash,
+        ptr::{self, NonNull},
     };
 
     use splay::{Branch, Node};
-    use wasm_bindgen::prelude::wasm_bindgen;
+
+    use crate::utils::console_log;
 
     use super::{
         cmp::Trivial,
@@ -677,78 +802,161 @@ pub mod builder {
 
     use super::graph::{self, HalfEdge};
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub enum Event {
         Site(Site),
         Circle(Circle),
     }
 
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     pub struct Site {
-        idx: usize,
+        pub idx: usize,
     }
 
-    #[derive(Debug)]
+    #[derive(Clone)]
     pub struct Circle {
-        idx_arc: usize,
-        prev: usize,
-        next: usize,
+        pub node: NonNull<Node>,
+        pub prev_idx: usize,
+        pub next_idx: usize,
     }
 
-    #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-    struct EventKey(u32);
-
-    #[derive(Debug)]
-    struct RemovableHeap<T> {
-        current_key: EventKey,
-        heap: BinaryHeap<(T, Trivial<EventKey>)>,
-        removed: HashSet<EventKey>,
-    }
-
-    impl<T: Ord> RemovableHeap<T> {
-        fn new() -> Self {
-            Self {
-                current_key: EventKey(0),
-                heap: Default::default(),
-                removed: Default::default(),
+    impl fmt::Debug for Circle {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            unsafe {
+                write!(
+                    f,
+                    "Circle {{ node: {:?}, left: {:?}, right: {:?} }}",
+                    self.node.as_ref(),
+                    self.prev_idx,
+                    self.next_idx,
+                )
             }
-        }
-
-        fn push(&mut self, value: T) -> EventKey {
-            self.heap.push((value, Trivial(self.current_key)));
-            let old_key = self.current_key;
-            self.current_key.0 += 1;
-            old_key
-        }
-
-        fn remove(&mut self, key: EventKey) {
-            self.removed.insert(key);
-        }
-
-        fn pop(&mut self) -> Option<T> {
-            while let Some((value, Trivial(key))) = self.heap.pop() {
-                if !self.removed.contains(&key) {
-                    return Some(value);
-                }
-            }
-            None
         }
     }
 
     #[derive(Debug)]
     pub struct Builder {
-        events: RemovableHeap<(Reverse<(Ordered<f64>, Ordered<f64>)>, Trivial<Event>)>,
-        pub beachline: splay::Tree,
+        pub events: BinaryHeap<(Reverse<(Ordered<f64>, Ordered<f64>)>, Trivial<Event>)>,
+        pub added_circles: HashSet<[usize; 3]>, // double-checker for robustness
+        pub beachline: NonNull<splay::Node>,
         pub directrix: Ordered<f64>,
         pub graph: graph::Graph,
+        pub beachline_node_pool: Vec<Box<Node>>,
         _init: bool,
+    }
+
+    fn allocate_node(pool: &mut Vec<Box<Node>>, value: splay::Breakpoint) -> NonNull<Node> {
+        pool.push(Box::new(Node::new(value)));
+        unsafe { NonNull::new_unchecked(pool.last_mut().unwrap().as_mut()) }
+    }
+
+    fn new_breakpoint_node(
+        pool: &mut Vec<Box<Node>>,
+        graph: &mut graph::Graph,
+        sites: [usize; 2],
+    ) -> NonNull<Node> {
+        let idx_halfedge = graph.topo.half_edges.len();
+        graph.topo.half_edges.push(HalfEdge {
+            vert: graph::INF,
+            face_left: sites[0],
+            flip: idx_halfedge + 1,
+        });
+        graph.topo.half_edges.push(HalfEdge {
+            vert: graph::UNSET,
+            face_left: sites[1],
+            flip: idx_halfedge,
+        });
+        let value = splay::Breakpoint {
+            site: sites[1],
+            left_half_edge: idx_halfedge,
+        };
+        allocate_node(pool, value)
+    }
+
+    fn eval_left_breakpoint_x(
+        graph: &graph::Graph,
+        sweep: Ordered<f64>,
+        node: &Node,
+    ) -> Ordered<f64> {
+        let left = node.side[Branch::Left as usize];
+        let left_x: Ordered<f64> = left
+            .map_or(f64::NEG_INFINITY, |left| unsafe {
+                geometry::breakpoint_x(
+                    graph.face_center[left.as_ref().value.site],
+                    graph.face_center[node.value.site],
+                    sweep.into(),
+                )
+            })
+            .into();
+        left_x
+    }
+
+    fn new_circle_event(
+        node: NonNull<Node>,
+        graph: &graph::Graph,
+        added_circles: &mut HashSet<[usize; 3]>,
+    ) -> Option<(Reverse<(Ordered<f64>, Ordered<f64>)>, Trivial<Event>)> {
+        unsafe {
+            let prev = node.as_ref().side[Branch::Left as usize]?;
+            let next = node.as_ref().side[Branch::Right as usize]?;
+
+            let mut indices = [
+                node.as_ref().value.site,
+                prev.as_ref().value.site,
+                next.as_ref().value.site,
+            ];
+
+            let p0 = graph.face_center[indices[0]];
+            let p1 = graph.face_center[indices[1]];
+            let p2 = graph.face_center[indices[2]];
+
+            if geometry::signed_area(p0, p1, p2) >= 1e-9 {
+                return None;
+            }
+            console_log!("{:?}", added_circles);
+            console_log!("{:?}", indices);
+
+            // indices.sort();
+            // if !added_circles.insert(indices) {
+            //     return None;
+            // }
+
+            console_log!("circumcenter: {:?}", geometry::circumcenter(p0, p1, p2));
+
+            let center = geometry::circumcenter(p0, p1, p2)?;
+            let radius = (center - p0).norm_sq().sqrt();
+            let y = center[1] + radius;
+            let x = center[0];
+
+            let event = Circle {
+                node,
+                prev_idx: prev.as_ref().value.site,
+                next_idx: next.as_ref().value.site,
+            };
+            Some((Reverse((y.into(), x.into())), Trivial(Event::Circle(event))))
+        }
+    }
+
+    pub fn check_circle_event(circle: &Circle) -> bool {
+        unsafe {
+            let Some(prev) = circle.node.as_ref().side[Branch::Left as usize] else {
+                return false;
+            };
+            let Some(next) = circle.node.as_ref().side[Branch::Right as usize] else {
+                return false;
+            };
+            prev.as_ref().value.site == circle.prev_idx
+                && next.as_ref().value.site == circle.next_idx
+        }
     }
 
     impl Builder {
         pub fn new() -> Self {
             Self {
-                events: RemovableHeap::new(),
-                beachline: splay::Tree::new(),
+                events: BinaryHeap::new(),
+                added_circles: HashSet::new(),
+                beachline: NonNull::dangling(),
+                beachline_node_pool: vec![],
                 directrix: f64::NEG_INFINITY.into(),
                 graph: graph::Graph {
                     topo: graph::Topology {
@@ -767,7 +975,7 @@ pub mod builder {
         where
             I: IntoIterator<Item = Point<f64>>,
         {
-            // self.graph.face_center.extend(points);
+            debug_assert!(!self._init, "No modification after init");
             for p in points {
                 self.graph.face_center.push(p);
 
@@ -779,60 +987,26 @@ pub mod builder {
             }
         }
 
-        fn new_breakpoint(graph: &mut graph::Graph, sites: [usize; 2]) -> splay::Breakpoint {
-            let idx_halfedge = graph.topo.half_edges.len();
-            graph.topo.half_edges.push(HalfEdge {
-                start: graph::INF,
-                face_left: sites[0],
-                flip: idx_halfedge + 1,
-            });
-            graph.topo.half_edges.push(HalfEdge {
-                start: graph::UNSET,
-                face_left: sites[1],
-                flip: idx_halfedge,
-            });
-            splay::Breakpoint {
-                site_right: sites[1],
-                halfedge: idx_halfedge,
-            }
-        }
-
-        fn eval_breakpoint_x(
-            graph: &graph::Graph,
-            sweep: Ordered<f64>,
-            node: &Node,
-        ) -> Ordered<f64> {
-            let left = node.side[Branch::Left as usize];
-            let left_x: Ordered<f64> = left
-                .map_or(f64::NEG_INFINITY, |left| unsafe {
-                    geometry::breakpoint_x(
-                        graph.face_center[left.as_ref().value.site_right],
-                        graph.face_center[node.value.site_right],
-                        sweep.into(),
-                    )
-                })
-                .into();
-            left_x
-        }
-
         pub fn init(&mut self) {
-            debug_assert!(!self._init, "Builder::init must be called only once");
+            if self._init {
+                return;
+            }
             self._init = true;
 
-            let n: usize = self.graph.face_center.len();
-            debug_assert!(n >= 1);
-            // insert leftmost dummy breakpoint,
+            if self.events.is_empty() {
+                return;
+            }
+
+            // create root arc (no breakpoint),
             // which has x = -infty (see eval_breakpoint_x)
-            let Event::Site(Site { idx: idx_site }) = self.events.pop().unwrap().1 .0 else {
+            let Event::Site(Site { idx }) = self.events.pop().unwrap().1 .0 else {
                 unreachable!()
             };
-            self.beachline.insert(
-                Branch::Right,
-                splay::Breakpoint {
-                    site_right: idx_site,
-                    halfedge: graph::UNSET,
-                },
-            );
+
+            self.beachline = splay::Node::new_nonnull(splay::Breakpoint {
+                site: idx,
+                left_half_edge: graph::UNSET,
+            });
         }
 
         pub fn step(&mut self) -> bool {
@@ -841,60 +1015,114 @@ pub mod builder {
                 "Builder::init must be called before Builder::step"
             );
 
-            let Some((Reverse(_y), Trivial(event))) = self.events.pop() else {
-                return false;
-            };
-            match event {
-                Event::Site(Site { idx: idx_site }) => {
-                    let PointNd([px, py]) = self.graph.face_center[idx_site];
-                    self.directrix = Ordered::from(py);
+            loop {
+                let Some((Reverse((py, px)), Trivial(event))) = self.events.pop() else {
+                    return false;
+                };
+                self.directrix = py;
+                match event {
+                    Event::Site(Site { idx: idx_site }) => {
+                        console_log!("processing site event {:?}", idx_site);
 
-                    self.beachline.splay_by(|node| {
-                        Ordered::from(px).cmp(&Self::eval_breakpoint_x(
+                        let PointNd([px, _py]) = self.graph.face_center[idx_site];
+
+                        Node::splay_last_by(&mut self.beachline, |node| {
+                            eval_left_breakpoint_x(&self.graph, self.directrix, node)
+                                <= Ordered::from(px)
+                        });
+
+                        let old_site = unsafe { self.beachline.as_ref().value.site };
+
+                        let left = self.beachline;
+                        let mid = new_breakpoint_node(
+                            &mut self.beachline_node_pool,
+                            &mut self.graph,
+                            [old_site, idx_site],
+                        );
+                        let right = new_breakpoint_node(
+                            &mut self.beachline_node_pool,
+                            &mut self.graph,
+                            [idx_site, old_site],
+                        );
+
+                        Node::insert_right(self.beachline, right);
+                        Node::insert_right(self.beachline, mid);
+
+                        self.events.extend(new_circle_event(
+                            left,
                             &self.graph,
-                            self.directrix,
-                            node,
-                        ))
-                    });
-
-                    let root = self.beachline.root.as_ref().unwrap();
-                    match Ordered::from(px).cmp(&Self::eval_breakpoint_x(
-                        &self.graph,
-                        self.directrix,
-                        root,
-                    )) {
-                        Ordering::Greater | Ordering::Equal => {
-                            let old_site = root.value.site_right;
-                            self.beachline.insert(
-                                Branch::Right,
-                                Self::new_breakpoint(&mut self.graph, [idx_site, old_site]),
-                            );
-                            self.beachline.insert(
-                                Branch::Right,
-                                Self::new_breakpoint(&mut self.graph, [old_site, idx_site]),
-                            );
-                        }
-                        Ordering::Less => {
-                            let old_site = root.children[Branch::Left as usize]
-                                .as_ref()
-                                .unwrap()
-                                .value
-                                .site_right;
-                            self.beachline.insert(
-                                Branch::Left,
-                                Self::new_breakpoint(&mut self.graph, [old_site, idx_site]),
-                            );
-                            self.beachline.insert(
-                                Branch::Left,
-                                Self::new_breakpoint(&mut self.graph, [idx_site, old_site]),
-                            );
-                        }
+                            &mut self.added_circles,
+                        ));
+                        self.events.extend(new_circle_event(
+                            right,
+                            &self.graph,
+                            &mut self.added_circles,
+                        ));
                     }
+                    Event::Circle(circle) => unsafe {
+                        console_log!("processing circle event: {:?}", circle);
+
+                        if !check_circle_event(&circle) {
+                            continue;
+                        };
+
+                        let Circle { node, .. } = circle;
+                        Node::splay(&mut self.beachline, node);
+
+                        let next = node.as_ref().side[Branch::Right as usize].unwrap();
+                        let prev = node.as_ref().side[Branch::Left as usize].unwrap();
+
+                        console_log!("before pop {:?}", self.beachline.as_ref());
+
+                        let mut beachline: Option<NonNull<Node>> = Some(self.beachline);
+                        Node::pop_root(&mut beachline);
+                        let Some(beachline) = beachline else {
+                            return false;
+                        };
+                        self.beachline = beachline;
+
+                        console_log!("after pop {:?}", self.beachline.as_ref());
+                        Node::validate_side_links(self.beachline);
+
+                        let vert_idx = self.graph.topo.verts.len();
+                        self.graph
+                            .vert_coord
+                            .push(Point::new(px.into(), py.into()).into());
+
+                        let he1 = self.graph.topo.half_edges[node.as_ref().value.left_half_edge];
+                        let he2 = self.graph.topo.half_edges[next.as_ref().value.left_half_edge];
+                        self.graph.topo.half_edges[he1.flip].vert = vert_idx;
+                        self.graph.topo.half_edges[he2.flip].vert = vert_idx;
+
+                        let he3_idx = self.graph.topo.half_edges.len();
+                        self.graph.topo.half_edges.push(HalfEdge {
+                            vert: vert_idx,
+                            face_left: prev.as_ref().value.site,
+                            flip: he3_idx + 1,
+                        });
+
+                        self.graph.topo.half_edges.push(HalfEdge {
+                            vert: graph::UNSET,
+                            face_left: next.as_ref().value.site,
+                            flip: he3_idx,
+                        });
+
+                        self.events.extend(
+                            new_circle_event(prev, &self.graph, &mut self.added_circles)
+                                .into_iter(),
+                        );
+                        self.events.extend(
+                            new_circle_event(next, &self.graph, &mut self.added_circles)
+                                .into_iter(),
+                        );
+                    },
                 }
-                Event::Circle(circle) => {}
+                Node::validate_parents(self.beachline);
+                Node::validate_side_links(self.beachline);
+
+                println!("{:?}", self.beachline);
+                return true;
             }
-            println!("{:?}", self.beachline);
-            true
         }
 
         pub fn run(&mut self) {

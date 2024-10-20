@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <link rel="stylesheet" href="./index.css">
+  <meta charset="utf-8">
+  <title>Fortune's algorithm</title>
+</head>
+
+<body>
+  <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+  <script src="./bootstrap.js"></script>
+  <main>
+    <section class="flex three">
+      <aside class="third">
+        <header>
+          <h1> Fortune's algorithm </h1>
+          <p>
+            This is a visual implementation of
+            <a href="https://en.wikipedia.org/wiki/Fortune%27s_algorithm">Fortune's algorithm</a>
+            for generating Voronoi diagrams, with
+            a time complexity of O(n log n).
+            Note that there are some floating point robustness issues, and
+            it may not work well with points that are too close together.
+          </p>
+        </header>
+        <div id="control" class="flex">
+          <div><span><button id="play-pause" paused="false">(P) Play/Pause</button></span></div>
+          <div><span>
+              <label>
+                <input type="checkbox" id="loop">
+                <span class="toggle button">(L) Loop</span>
+              </label>
+            </span></div>
+          <div><span><button id="step">(S) Step</button></span></div>
+          <div><span><button id="reset">(R) Reset</button></span></div>
+          <div><span><button id="clear" class="error">(C) Clear</button></span></div>
+          <div class="full"><span>
+              <label><button id="add-random-points" class="stack">(A) Add random points</button></label>
+              <label><input id="num-of-random-points" type="number" min="1" max="1000000" placeholder="number of points"
+                  class="stack"></input></label>
+            </span></div>
+          <div class="full">
+            <span class="button stack"> (+/-) Speed:
+              <span id="speed-label"></span>
+            </span>
+            <span class="stack"> <input type="range" id="speed" min="0" max="100" value="10"> </span>
+          </div>
+        </div>
+      </aside>
+      <div id="canvas-wrapper" class="two-third-1000">
+        <div id="canvas"></div>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>

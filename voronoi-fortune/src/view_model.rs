@@ -16,6 +16,8 @@ pub mod svg {
 
     use crate::voronoi::geometry::{self, Point};
 
+    use super::BBox;
+
     type Style<'a> = &'a str;
 
     pub struct Open<'a>(pub &'a str);
@@ -83,8 +85,9 @@ pub mod svg {
             y
         }
 
-        pub fn ranged(self, x_range: [f64; 2], style: Style) -> RangedParabola {
+        pub fn ranged(self, bbox: BBox, x_range: [f64; 2], style: Style) -> RangedParabola {
             RangedParabola {
+                bbox,
                 parabola: self,
                 x_range,
                 style,
@@ -94,6 +97,7 @@ pub mod svg {
 
     #[derive(Clone, Copy)]
     pub struct RangedParabola<'a> {
+        pub bbox: BBox,
         pub parabola: Parabola,
         pub x_range: [f64; 2],
         pub style: Style<'a>,
@@ -103,7 +107,9 @@ pub mod svg {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let this = &self.parabola;
             let x_range = self.x_range;
-            let [x0, x1] = x_range;
+            let [mut x0, mut x1] = x_range;
+            x0 = x0.max(self.bbox.x);
+            x1 = x1.min(self.bbox.x + self.bbox.w);
             let y0 = this.eval(x0);
             let y1 = this.eval(x1);
             if !this.a.is_finite() {
@@ -119,14 +125,20 @@ pub mod svg {
                     f,
                     r#"<path d="M {} {} Q {} {} {} {}" fill="none" {}/>"#,
                     x0, y0, p2[0], p2[1], x1, y1, self.style
-                )
+                )?;
             } else {
-                write!(
-                    f,
-                    r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-dasharray="2 1" {}/>"#,
-                    x0, y0, x1, y1, self.style
-                )
+                // let Parabola { p, q, .. } = self.parabola;
+                // write!(
+                //     f,
+                //     r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-dasharray="2 1" {}/>"#,
+                //     p,
+                //     q,
+                //     p,
+                //     q - self.bbox.h * 2.0,
+                //     self.style
+                // )
             }
+            Ok(())
         }
     }
 }
@@ -256,8 +268,9 @@ impl ViewModel {
                 let site = &sites_inorder[i];
                 let x0 = breakpoints[i];
                 let x1 = breakpoints[i + 1];
+
                 let parabola = svg::Parabola::from_focus_directrix(*site, directrix);
-                write!(svg, "{}", parabola.ranged([x0, x1], "")).unwrap();
+                write!(svg, "{}", parabola.ranged(self.bbox, [x0, x1], "")).unwrap();
             }
             write!(svg, "{}", Close("g")).unwrap();
 

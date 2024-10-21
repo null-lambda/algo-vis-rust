@@ -8,59 +8,12 @@ use std::cmp::Reverse;
 use std::collections::HashMap;
 use std::io::Write;
 use std::iter;
-use svg::{Circle, Close, Line, Open};
 use wasm_bindgen::prelude::*;
 
 pub mod svg {
-    use std::fmt;
-
     use crate::voronoi::geometry::{self, Point};
 
-    use super::BBox;
-
     type Style<'a> = &'a str;
-
-    pub struct Open<'a>(pub &'a str);
-
-    impl<'a> fmt::Display for Open<'a> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "<{}>", self.0)
-        }
-    }
-
-    pub struct Close<'a>(pub &'a str);
-
-    impl<'a> fmt::Display for Close<'a> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(f, "</{}>", self.0)
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    pub struct Line<'a>(pub [f64; 4], pub Style<'a>);
-
-    impl<'a> fmt::Display for Line<'a> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(
-                f,
-                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" {} />"#,
-                self.0[0], self.0[1], self.0[2], self.0[3], self.1
-            )
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    pub struct Circle<'a>(pub [f64; 3], pub Style<'a>);
-
-    impl<'a> fmt::Display for Circle<'a> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            write!(
-                f,
-                r#"<circle cx="{}" cy="{}" r="{}" {}/>"#,
-                self.0[0], self.0[1], self.0[2], self.1
-            )
-        }
-    }
 
     #[derive(Clone, Copy)]
     pub struct Parabola {
@@ -83,62 +36,6 @@ pub mod svg {
                 return self.q;
             }
             y
-        }
-
-        pub fn ranged(self, bbox: BBox, x_range: [f64; 2], style: Style) -> RangedParabola {
-            RangedParabola {
-                bbox,
-                parabola: self,
-                x_range,
-                style,
-            }
-        }
-    }
-
-    #[derive(Clone, Copy)]
-    pub struct RangedParabola<'a> {
-        pub bbox: BBox,
-        pub parabola: Parabola,
-        pub x_range: [f64; 2],
-        pub style: Style<'a>,
-    }
-
-    impl<'a> fmt::Display for RangedParabola<'a> {
-        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-            let this = &self.parabola;
-            let x_range = self.x_range;
-            let [mut x0, mut x1] = x_range;
-            x0 = x0.max(self.bbox.x);
-            x1 = x1.min(self.bbox.x + self.bbox.w);
-            let y0 = this.eval(x0);
-            let y1 = this.eval(x1);
-            if !this.a.is_finite() {
-                return Ok(());
-            }
-
-            let p0 = Point::new(x0, y0);
-            let p1 = Point::new(x1, y1);
-            let dp0 = Point::new(1.0, 2.0 * this.a * (x0 - this.p));
-            let dp1 = Point::new(1.0, 2.0 * this.a * (x1 - this.p));
-            if let Some(p2) = geometry::line_intersection(p0, dp0, p1, dp1) {
-                write!(
-                    f,
-                    r#"<path d="M {} {} Q {} {} {} {}" fill="none" {}/>"#,
-                    x0, y0, p2[0], p2[1], x1, y1, self.style
-                )?;
-            } else {
-                // let Parabola { p, q, .. } = self.parabola;
-                // write!(
-                //     f,
-                //     r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-dasharray="2 1" {}/>"#,
-                //     p,
-                //     q,
-                //     p,
-                //     q - self.bbox.h * 2.0,
-                //     self.style
-                // )
-            }
-            Ok(())
         }
     }
 }
@@ -183,6 +80,120 @@ pub struct ViewModel {
     model: Builder,
 }
 
+pub struct SvgRenderer {
+    buf: Vec<u8>,
+    scale: [f64; 2],
+    trans: [f64; 2],
+}
+
+impl SvgRenderer {
+    pub fn new(bbox: BBox) -> Self {
+        debug_assert!(bbox.w > 0.0 && bbox.h > 0.0);
+        let scale = [300.0 / bbox.w, 300.0 / bbox.h];
+        let trans = [-bbox.x, -bbox.y];
+        Self {
+            buf: vec![],
+            scale,
+            trans,
+        }
+    }
+
+    pub fn emit(&self) -> String {
+        unsafe { String::from_utf8_unchecked(self.buf.clone()) }
+    }
+
+    fn transform_x(&self, x: f64) -> f64 {
+        (x + self.trans[0]) * self.scale[0]
+    }
+
+    fn transform_y(&self, y: f64) -> f64 {
+        (y + self.trans[1]) * self.scale[1]
+    }
+
+    fn transform(&self, x: f64, y: f64) -> (f64, f64) {
+        (self.transform_x(x), self.transform_y(y))
+    }
+
+    pub fn line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64, style: &str) {
+        let (x0, y0) = self.transform(x0, y0);
+        let (x1, y1) = self.transform(x1, y1);
+
+        write!(
+            self.buf,
+            "<line x1='{}' y1='{}' x2='{}' y2='{}' {} />",
+            x0, y0, x1, y1, style
+        )
+        .unwrap();
+    }
+
+    pub fn cross(&mut self, x: f64, y: f64, r: f64, style: &str) {
+        let r = r / self.scale[0];
+        self.line(x - r, y - r, x + r, y + r, style);
+        self.line(x - r, y + r, x + r, y - r, style);
+    }
+
+    pub fn circle(&mut self, cx: f64, cy: f64, r: f64, style: &str) {
+        let (cx, cy) = self.transform(cx, cy);
+        write!(
+            self.buf,
+            "<circle cx='{}' cy='{}' r='{}' {} />",
+            cx,
+            cy,
+            r * self.scale[0],
+            style
+        )
+        .unwrap();
+    }
+
+    pub fn point(&mut self, x: f64, y: f64, r: f64, style: &str) {
+        let (x, y) = self.transform(x, y);
+        write!(
+            self.buf,
+            "<circle cx='{}' cy='{}' r='{}' {} />",
+            x, y, r, style
+        )
+        .unwrap();
+    }
+
+    pub fn parabola(&mut self, directrix: f64, focus: Point<f64>, x_range: [f64; 2], style: &str) {
+        let focus = Point::new(self.transform_x(focus[0]), self.transform_y(focus[1]));
+        let directrix = self.transform_y(directrix);
+        let x_range = [self.transform_x(x_range[0]), self.transform_x(x_range[1])];
+        let parabola = svg::Parabola::from_focus_directrix(focus, directrix);
+        let [mut x0, mut x1] = x_range;
+        x0 = x0.max(0.0);
+        x1 = x1.min(300.0);
+        let y0 = parabola.eval(x0);
+        let y1 = parabola.eval(x1);
+        if !parabola.a.is_finite() {
+            return;
+        }
+
+        let p0 = Point::new(x0, y0);
+        let p1 = Point::new(x1, y1);
+        let dp0 = Point::new(1.0, 2.0 * parabola.a * (x0 - parabola.p));
+        let dp1 = Point::new(1.0, 2.0 * parabola.a * (x1 - parabola.p));
+        if let Some(p2) = geometry::line_intersection(p0, dp0, p1, dp1) {
+            write!(
+                self.buf,
+                r#"<path d="M {} {} Q {} {} {} {}" fill="none" {}/>"#,
+                x0, y0, p2[0], p2[1], x1, y1, style
+            )
+            .unwrap();
+        } else {
+            //
+        }
+    }
+
+    pub fn open(&mut self, tag: &str) {
+        write!(self.buf, "<{}>", tag).unwrap();
+    }
+
+    pub fn close(&mut self, tag: &str) {
+        write!(self.buf, "</{}>", tag).unwrap();
+    }
+}
+
 #[wasm_bindgen]
 impl ViewModel {
     #[wasm_bindgen(constructor)]
@@ -219,9 +230,36 @@ impl ViewModel {
             .flat_map(|p| vec![p[0], p[1]])
             .collect()
     }
-    
+
     pub fn set_bbox(&mut self, bbox: &BBox) {
         self.bbox = *bbox;
+    }
+
+    pub fn get_bbox(&self) -> BBox {
+        self.bbox
+    }
+
+    pub fn fit_bbox(&mut self) -> BBox {
+        if self.get_points_slice().is_empty() {
+            return BBox::new(-100.0, -100.0, 300.0, 300.0);
+        }
+
+        let (mut x0, mut y0, mut x1, mut y1) = (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+        for p in self.get_points_slice() {
+            x0 = x0.min(p[0]);
+            x1 = x1.max(p[0]);
+            y0 = y0.min(p[1]);
+            y1 = y1.max(p[1]);
+        }
+        crate::utils::console_log!("{:?} {:?} {:?} {:?}", x0, y0, x1, y1);
+        let mut w = (x1 - x0).min(1e300).max(1e-300);
+        let mut h = (y1 - y0).min(1e300).max(1e-300);
+
+        if self.get_points_slice().len() == 1 {
+            w = 300.0;
+            h = 300.0;
+        }
+        BBox::new(x0 - w * 1., y0 - w * 1., w * 3.0, h * 3.0)
     }
 
     fn gen_site_marker(&self) -> HashMap<usize, SiteMarker> {
@@ -233,17 +271,21 @@ impl ViewModel {
         site_marker
     }
 
-    fn render_sites(&self, svg: &mut Vec<u8>, site_markers: &HashMap<usize, SiteMarker>) {
-        write!(svg, "{}", Open("g class='site'")).unwrap();
+    fn render_sites(&self, svg: &mut SvgRenderer, site_markers: &HashMap<usize, SiteMarker>) {
+        svg.open("g class='site'");
         for (&i, &marker) in site_markers {
             let p = self.model.graph.face_center[i];
             let s = format!("class='{}'", marker.to_class());
-            write!(svg, "{}", Circle([p[0], p[1], 1.0], s.as_str())).unwrap();
+            svg.point(p[0], p[1], 1.0, s.as_str());
         }
-        write!(svg, "{}", Close("g")).unwrap();
+        svg.close("g");
     }
 
-    fn render_beachlines(&self, svg: &mut Vec<u8>, site_markers: &mut HashMap<usize, SiteMarker>) {
+    fn render_beachlines(
+        &self,
+        svg: &mut SvgRenderer,
+        site_markers: &mut HashMap<usize, SiteMarker>,
+    ) {
         unsafe {
             let mut sites_inorder: Vec<Point<f64>> = vec![];
             builder::splay::Node::inorder(self.model.beachline, |node| {
@@ -253,12 +295,12 @@ impl ViewModel {
                 sites_inorder.push(point);
             });
 
-            write!(svg, "{}", Open("g class='beachline'")).unwrap();
+            svg.open("g class='beachline'");
 
             let mut directrix: f64 = self.model.directrix.into();
             directrix += 1e-9;
 
-            write!(svg, "{}", Open("g class='parabola'")).unwrap();
+            svg.open("g class='parabola'");
             let breakpoints: Vec<f64> = iter::once(self.bbox.x)
                 .chain(
                     sites_inorder
@@ -273,29 +315,30 @@ impl ViewModel {
                 let x0 = breakpoints[i];
                 let x1 = breakpoints[i + 1];
 
-                let parabola = svg::Parabola::from_focus_directrix(*site, directrix);
-                write!(svg, "{}", parabola.ranged(self.bbox, [x0, x1], "")).unwrap();
+                svg.parabola(directrix, *site, [x0, x1], "");
             }
-            write!(svg, "{}", Close("g")).unwrap();
+            svg.close("g");
 
-            write!(svg, "{}", Open("g class='breakpoint'")).unwrap();
+            svg.open("g class='breakpoint'");
             for i in 1..sites_inorder.len() {
                 let site = &sites_inorder[i];
                 let x0 = breakpoints[i];
                 let parabola = svg::Parabola::from_focus_directrix(*site, directrix);
                 let y0 = parabola.eval(x0);
-                let r = 2.0;
-                write!(svg, "{}", Line([x0, y0 + r, x0, y0 - r], "")).unwrap();
-                write!(svg, "{}", Line([x0 + r, y0, x0 - r, y0], "")).unwrap();
+                svg.cross(x0, y0, 2.0, "");
             }
-            write!(svg, "{}", Close("g")).unwrap();
-            write!(svg, "{}", Close("g")).unwrap();
+            svg.close("g");
+            svg.close("g");
         }
     }
 
-    fn render_circ_events(&self, svg: &mut Vec<u8>, site_markers: &mut HashMap<usize, SiteMarker>) {
+    fn render_circ_events(
+        &self,
+        svg: &mut SvgRenderer,
+        site_markers: &mut HashMap<usize, SiteMarker>,
+    ) {
         let mut queue = self.model.events.clone();
-        write!(svg, "{}", Open("g class='circumcircle'")).unwrap();
+        svg.open("g class='circumcircle'");
         while let Some((Reverse((qy, qx)), Trivial(event))) = queue.pop() {
             match event {
                 Event::Circle(circle) => {
@@ -317,18 +360,18 @@ impl ViewModel {
                     let qy: f64 = qy.into();
 
                     let radius = (p0 - center).norm_sq().sqrt();
-                    write!(svg, "{}", Circle([center[0], center[1], radius], "")).unwrap();
-                    write!(svg, "{}", Circle([qx, qy, 1.0], "class='event-circle'")).unwrap();
+                    svg.circle(center[0], center[1], radius, "");
+                    svg.point(qx, qy, 1.0, "class='event-circle'");
                 }
                 Event::Site(site) => {
                     site_markers.insert(site.idx, SiteMarker::Preprocess);
                 }
             }
         }
-        write!(svg, "{}", Close("g")).unwrap();
+        svg.close("g");
     }
 
-    fn render_half_edges(&self, svg: &mut Vec<u8>) {
+    fn render_half_edges(&self, svg: &mut SvgRenderer) {
         let voronoi::graph::Graph {
             vert_coord,
             face_center,
@@ -346,23 +389,18 @@ impl ViewModel {
                     let mid = (f1 + f2) * 0.5;
                     let mut dir = (f2 - f1).rot();
                     dir = dir * (dir.norm_sq().sqrt() + 1e-9).recip();
-                    mid + dir * 5e2
+                    mid + dir * (self.bbox.w + self.bbox.h)
                 }
             };
             let p1 = get_p(h1);
             let p2 = get_p(h2);
 
-            writeln!(svg, "{}", Circle([p1[0], p1[1], 1.0], "class='vertex'")).unwrap();
-            writeln!(svg, "{}", Circle([p2[0], p2[1], 1.0], "class='vertex'")).unwrap();
-            writeln!(
-                svg,
-                "{}",
-                Line([p1[0], p1[1], p2[0], p2[1]], "class='edge-voronoi'")
-            )
-            .unwrap();
+            svg.point(p1[0], p1[1], 1.0, "class='vertex'");
+            svg.point(p2[0], p2[1], 1.0, "class='vertex'");
+            svg.line(p1[0], p1[1], p2[0], p2[1], "class='edge-voronoi'")
         }
 
-        write!(svg, "{}", Open("g class='edges'")).unwrap();
+        svg.open("g class='edges'");
         for (i_h1, &h1) in half_edges.iter().enumerate() {
             let i_h2 = h1.twin;
             if i_h2 < i_h1 {
@@ -373,41 +411,34 @@ impl ViewModel {
             let p1 = face_center[h1.face_left];
             let p2 = face_center[h2.face_left];
 
-            writeln!(
-                svg,
-                "{}",
-                Line([p1[0], p1[1], p2[0], p2[1]], "class='edge-delaunay'")
-            )
-            .unwrap();
+            svg.line(p1[0], p1[1], p2[0], p2[1], "class='edge-delaunay'");
         }
 
-        write!(svg, "{}", Close("g")).unwrap();
+        svg.close("g");
     }
 
-    fn render_sweepline(&self, svg: &mut Vec<u8>) {
+    fn render_sweepline(&self, svg: &mut SvgRenderer) {
         let directrix: f64 = self.model.directrix.into();
-        write!(
-            svg,
-            r#"<line x1="{}" y1="{}" x2="{}" y2="{}" class="sweepline"/>"#,
+        svg.line(
             self.bbox.x,
             directrix,
             self.bbox.x + self.bbox.w,
             directrix,
-        )
-        .unwrap();
+            "class='sweepline'",
+        );
     }
 
     pub fn render_to_svg(&self) -> Vec<String> {
-        let mut header: Vec<u8> = vec![];
-        let mut rest: Vec<u8> = vec![];
+        let mut header = SvgRenderer::new(self.bbox);
+        let mut rest = SvgRenderer::new(self.bbox);
 
-        let bbox = self.bbox;
-        write!(
-            header,
-            r#"<svg class="voronoi" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg">"#,
-            bbox.x, bbox.y, bbox.w, bbox.h
-        )
-        .unwrap();
+        header.open(
+            format!(
+                r#"svg class="voronoi" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg""#,
+                0.0, 0.0, 300.0, 300.0
+            )
+            .as_str(),
+        );
 
         if !self.get_points_slice().is_empty() {
             let mut site_markers = self.gen_site_marker();
@@ -418,11 +449,9 @@ impl ViewModel {
             self.render_sites(&mut rest, &site_markers);
         }
 
-        write!(rest, "</svg>").unwrap();
+        rest.close("svg");
 
-        let header = String::from_utf8(header).unwrap();
-        let rest = String::from_utf8(rest).unwrap();
-        vec![header, rest]
+        vec![header.emit(), rest.emit()]
     }
 
     pub fn run(&mut self) {

@@ -133,6 +133,7 @@ elem_points_raw.addEventListener('input', throttle(event => {
         vm.add_point(x, y);
     }
     vm.init();
+    bbox = vm.fit_bbox();
     set_paused(temp);
     render();
 }, 100));

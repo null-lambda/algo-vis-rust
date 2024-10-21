@@ -1,4 +1,4 @@
-import { throttle, rand_range } from './utils.js';
+import { throttle, sleep, rand_range } from './utils.js';
 import * as wasm from "algo-vis-rust";
 import * as styles from './index.scss';
 import css_voronoi from './voronoi.scss.raw';
@@ -201,32 +201,78 @@ document.addEventListener('resize', () => {
 });
 
 
-const render = throttle(() => {
-    const [svg_header, svg_rest] = vm.render_to_svg();
-    const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
-    const domURL = window.URL || window.webkitURL || window;
-    const url = domURL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
-    const img = new Image();
-    img.addEventListener('load', () => {
-        requestAnimationFrame(() => {
-            const w = Math.min(elem_canvas.clientWidth, elem_canvas.clientHeight);
-            elem_canvas.width = w;
-            elem_canvas.height = w;
+let should_render = false;  
+const render = () => {
+    should_render = true;
+};
 
-            const ctx = elem_canvas.getContext('2d');
-            ctx.canvas.width = elem_canvas.clientWidth;
-            ctx.canvas.height = elem_canvas.clientHeight;
+let t_last_render = Date.now(); 
+const dt_sleep_min = 1000 / 120;
+const dt_sleep_max = 1000 * 5;
+let dt_sleep = dt_sleep_min;
+const render_loop = async () => {
+    while (true) {
 
-            ctx.drawImage(img, 0, 0);
-            domURL.revokeObjectURL(url);
+        const t_start = Date.now();
+
+        if (!should_render) {
+            await new Promise(resolve => {  
+                requestAnimationFrame(resolve);
+            });
+            continue;
+        }
+
+        const [svg_header, svg_rest] = vm.render_to_svg();
+        const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
+        const domURL = window.URL || window.webkitURL || window;
+        const url = domURL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        const img = new Image();
+        await new Promise(resolve => {
+            img.addEventListener('load', () => resolve());
+            img.src = url;
         });
-    });
 
-    img.src = url;
-}, 1000 / 30);
+        const w = Math.min(elem_canvas.clientWidth, elem_canvas.clientHeight);
+        elem_canvas.width = w;
+        elem_canvas.height = w;
 
+        const ctx = elem_canvas.getContext('2d');
+        ctx.canvas.width = elem_canvas.clientWidth;
+        ctx.canvas.height = elem_canvas.clientHeight;
+
+        ctx.drawImage(img, 0, 0);
+        domURL.revokeObjectURL(url);
+
+        should_render = false;
+        console.log('rendered');    
+
+        await new Promise(resolve => {  
+            requestAnimationFrame(resolve);
+        });
+
+        const t_end = Date.now();
+        const dt_period = t_end - t_last_render;
+        const dt_render = t_end - t_start;
+
+        // compare and sleep adaptively to keep render rate less than 1/2 (not to block the main thread)
+        const render_percentage = dt_render / dt_period;
+        const target_render_percentage = 0.5;
+        const adaptivity = 1.25;
+        if (render_percentage > target_render_percentage) {
+            dt_sleep = Math.min(dt_sleep_max, dt_sleep * adaptivity);
+        } else {
+            dt_sleep = Math.max(dt_sleep_min, dt_sleep / adaptivity);
+        }
+        t_last_render = Date.now(); 
+        console.log(`dt_sleep: ${dt_sleep}, dt_render: ${dt_render}, dt_period: ${dt_period}`);
+
+        await sleep(dt_sleep);
+    }
+};
+render_loop();  
 
 const step = async () => {
+    console.log('step');
     return new Promise((resolve) => {
         setTimeout(() => {
             resolve(vm.step());
@@ -234,7 +280,7 @@ const step = async () => {
     });
 };
 
-const animate = async () => {
+const builder_loop = async () => {
     if (!paused) {
         const result = await step();
         if (result) {
@@ -243,8 +289,8 @@ const animate = async () => {
             elem_reset.dispatchEvent(new PointerEvent('click'));
         }
     }
-    requestAnimationFrame(animate);
+    requestAnimationFrame(builder_loop);
 };
-animate();
+builder_loop();
 
 

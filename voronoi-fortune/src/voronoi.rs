@@ -31,6 +31,7 @@ pub mod cmp {
 #[allow(dead_code)]
 #[macro_use]
 pub mod geometry {
+    use core::f64;
     use std::ops::{Add, Div, Index, IndexMut, Mul, Neg, Sub};
 
     #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
@@ -117,6 +118,12 @@ pub mod geometry {
     impl Scalar for f64 {
         fn one() -> Self {
             1.0
+        }
+    }
+
+    impl Scalar for i64 {
+        fn one() -> Self {
+            1
         }
     }
 
@@ -272,9 +279,13 @@ pub mod geometry {
         let sign = a.signum() * (y2 - y1).signum();
         let mut x = xm + (-b_2 - sign * det_4.max(0.0).sqrt()) / a;
         if !x.is_finite() {
-            x = xm - c * 0.5 / b_2;
-            if !x.is_finite() {
-                x = xm + dx_half;
+            if dx_half > 0.0 {
+                x = xm - c * 0.5 / b_2;
+                if !x.is_finite() {
+                    x = xm;
+                }
+            } else {
+                x = f64::INFINITY;
             }
         }
         x
@@ -920,10 +931,6 @@ pub mod builder {
         }
 
         pub fn step(&mut self) -> bool {
-            // debug_assert!(
-            //     self._init,
-            //     "Builder::init must be called before Builder::step"
-            // );
             if !self._init {
                 return false;
             }
@@ -1023,16 +1030,10 @@ pub mod builder {
                         Node::validate_side_links(self.beachline);
                         Node::validate_parents(self.beachline);
 
-                        let vert_idx = self.graph.topo.verts.len();
-                        debug_assert_eq!(self.graph.vert_coord.len(), vert_idx);
-
                         let i_he1 = node.as_ref().value.left_half_edge;
                         let i_he2 = next.as_ref().value.left_half_edge;
                         let he1 = self.graph.topo.half_edges[i_he1];
                         let he2 = self.graph.topo.half_edges[i_he2];
-
-                        self.graph.topo.half_edges[i_he1].vert = vert_idx;
-                        self.graph.topo.half_edges[i_he2].vert = vert_idx;
 
                         let f1 = he1.face_left;
                         let f2 = self.graph.topo.half_edges[he1.twin].face_left;
@@ -1043,27 +1044,35 @@ pub mod builder {
                         let pf1 = self.graph.face_center[f1];
                         let pf2 = self.graph.face_center[f2];
                         let pf3 = self.graph.face_center[f3];
-                        let center =
-                            geometry::circumcenter(pf1, pf2, pf3).expect("Missing circumcenter");
+                        if let Some(center) = geometry::circumcenter(pf1, pf2, pf3) {
+                            let vert_idx = self.graph.topo.verts.len();
+                            debug_assert_eq!(self.graph.vert_coord.len(), vert_idx);
 
-                        let he3_idx = self.graph.topo.half_edges.len();
-                        self.graph.topo.half_edges.push(HalfEdge {
-                            vert: vert_idx,
-                            face_left: next.as_ref().value.site,
-                            twin: he3_idx + 1,
-                        });
-                        self.graph.topo.half_edges.push(HalfEdge {
-                            vert: graph::INF,
-                            face_left: prev.as_ref().value.site,
-                            twin: he3_idx,
-                        });
-                        next.as_mut().value.left_half_edge = he3_idx + 1;
+                            self.graph.topo.half_edges[i_he1].vert = vert_idx;
+                            self.graph.topo.half_edges[i_he2].vert = vert_idx;
 
-                        self.graph.vert_coord.push(center);
-                        self.graph
-                            .topo
-                            .verts
-                            .push(graph::Vertex { half_edge: he3_idx });
+                            let he3_idx = self.graph.topo.half_edges.len();
+                            self.graph.topo.half_edges.push(HalfEdge {
+                                vert: vert_idx,
+                                face_left: next.as_ref().value.site,
+                                twin: he3_idx + 1,
+                            });
+                            self.graph.topo.half_edges.push(HalfEdge {
+                                vert: graph::INF,
+                                face_left: prev.as_ref().value.site,
+                                twin: he3_idx,
+                            });
+                            next.as_mut().value.left_half_edge = he3_idx + 1;
+
+                            self.graph.vert_coord.push(center);
+                            self.graph
+                                .topo
+                                .verts
+                                .push(graph::Vertex { half_edge: he3_idx });
+                        } else {
+                            self.graph.topo.half_edges[i_he1].vert = graph::INF;
+                            self.graph.topo.half_edges[i_he2].vert = graph::INF;
+                        }
                     },
                 }
                 Node::validate_parents(self.beachline);

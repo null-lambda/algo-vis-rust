@@ -6,8 +6,8 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "bootstrap.js",
+    clean: true,
   },
-  mode: "development",
   plugins: [
     new CopyWebpackPlugin(['index.html'])
   ],
@@ -25,6 +25,5 @@ module.exports = {
   },
  experiments: {
     asyncWebAssembly: true,
-    topLevelAwait: true,
   },
 };

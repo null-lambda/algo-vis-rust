@@ -4,14 +4,8 @@
   "description": "create an app to consume rust-generated wasm packages",
   "main": "index.js",
   "scripts": {
-    "build": "webpack --config webpack.config.js",
-    "start": "webpack serve",
-    "sass-dev": "sass --watch --update --style=expanded ./:./",
-    "sass-prod": "sass --no-source-map --style=compressed ./:./"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/rustwasm/create-wasm-app.git"
+    "build": "webpack --config webpack.prod.js",
+    "start": "webpack serve --open --config webpack.dev.js"
   },
   "keywords": [
     "webassembly",
@@ -39,6 +33,7 @@
     "style-loader": "^4.0.0",
     "webpack": "^5.95.0",
     "webpack-cli": "^5.1.4",
-    "webpack-dev-server": "^5.1.0"
+    "webpack-dev-server": "^5.1.0",
+    "webpack-merge": "^6.0.1"
   }
 }

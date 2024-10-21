@@ -3,12 +3,9 @@
   "version": "0.1.0",
   "description": "create an app to consume rust-generated wasm packages",
   "main": "index.js",
-  "bin": {
-    "create-wasm-app": ".bin/create-wasm-app.js"
-  },
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "start": "webpack-dev-server",
+    "start": "webpack serve",
     "sass-dev": "sass --watch --update --style=expanded ./:./",
     "sass-prod": "sass --no-source-map --style=compressed ./:./"
   },
@@ -34,10 +31,14 @@
   },
   "devDependencies": {
     "copy-webpack-plugin": "^5.0.0",
+    "css-loader": "^7.1.2",
     "hello-wasm-pack": "^0.1.0",
+    "html-webpack-plugin": "^5.6.2",
     "sass": "1.60",
-    "webpack": "^4.47.0",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.5"
+    "sass-loader": "^15.0.0",
+    "style-loader": "^4.0.0",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0"
   }
 }

@@ -14,9 +14,17 @@ module.exports = {
   module: {
     rules: [
       {
-        test: /\.css$/i,
-        use: ["raw-loader"],
+        test: /\.scss\.raw$/i,
+        use: ["raw-loader", "sass-loader"],
       },
+      {
+        test: /\.scss$/i, 
+        use: ["style-loader", "css-loader", "sass-loader"],
+      }
     ],
+  },
+ experiments: {
+    asyncWebAssembly: true,
+    topLevelAwait: true,
   },
 };

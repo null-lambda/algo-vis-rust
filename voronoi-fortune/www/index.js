@@ -1,6 +1,7 @@
-import * as wasm from "algo-vis-rust";
-import css_voronoi from '!!raw-loader!./voronoi.css';
 import { throttle, rand_range } from './utils.js';
+import * as wasm from "algo-vis-rust";
+import * as styles from './index.scss';
+import css_voronoi from './voronoi.scss.raw';
 const styles_voronoi = `<style>${css_voronoi}</style>`;
 
 let bbox = new wasm.BBox(-100, -100, 300, 300);

@@ -189,13 +189,28 @@ impl ViewModel {
         self.model.add_points(iter::once(Point::new(px, py)));
     }
 
-    fn get_points(&self) -> &[Point<f64>] {
+    pub fn get_num_points(&self) -> usize {
+        self.model.graph.face_center.len()
+    }
+
+    fn get_points_slice(&self) -> &[Point<f64>] {
         &self.model.graph.face_center
+    }
+
+    pub fn get_num_edges(&self) -> usize {
+        self.model.graph.topo.half_edges.len()
+    }
+
+    pub fn get_points(&self) -> Vec<f64> {
+        self.get_points_slice()
+            .iter()
+            .flat_map(|p| vec![p[0], p[1]])
+            .collect()
     }
 
     fn gen_site_marker(&self) -> HashMap<usize, SiteMarker> {
         let mut site_marker = HashMap::new();
-        for i in 0..self.get_points().len() {
+        for i in 0..self.get_points_slice().len() {
             site_marker.insert(i, SiteMarker::Complete); // todo
         }
         // for
@@ -377,7 +392,7 @@ impl ViewModel {
         )
         .unwrap();
 
-        if !self.get_points().is_empty() {
+        if !self.get_points_slice().is_empty() {
             let mut site_markers = self.gen_site_marker();
             self.render_half_edges(&mut rest);
             self.render_circ_events(&mut rest, &mut site_markers);
@@ -406,7 +421,7 @@ impl ViewModel {
     }
 
     pub fn reset(&mut self) {
-        let points = self.get_points().to_vec();
+        let points = self.get_points_slice().to_vec();
         self.model = Builder::new();
         self.model.add_points(points);
     }

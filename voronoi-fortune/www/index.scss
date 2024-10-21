@@ -20,6 +20,14 @@ input[type="range"] {
     accent-color: $picnic-primary;
 }
 
+textarea {
+    resize: vertical;
+
+    &[parse-error=true] {
+        background-color: #ffcccc;
+    }
+}
+
 
 #play-pause[paused=true] {
     background-color: #ff851b;

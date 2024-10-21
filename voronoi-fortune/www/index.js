@@ -1,16 +1,9 @@
 import * as wasm from "algo-vis-rust";
 import css_voronoi from '!!raw-loader!./voronoi.css';
+import { throttle, rand_range } from './utils.js';
 const styles_voronoi = `<style>${css_voronoi}</style>`;
 
 let bbox = new wasm.BBox(-100, -100, 300, 300);
-let seed = 42;
-const rand_next = () => {
-    seed = ((seed * 166455) + 10139043) % 0xffffffff;
-    return seed;
-};
-const rand_range = (a, b) => {
-    return a + rand_next() % (b - a + 1);
-};
 
 let vm = new wasm.ViewModel(bbox);
 for (let i = 0; i < 15; i++) {
@@ -33,6 +26,7 @@ const elem_speed = document.querySelector('#speed');
 const elem_speed_label = document.querySelector('#speed-label');
 const elem_add_points = document.querySelector('#add-random-points');
 const elem_num_of_random_points = document.querySelector('#num-of-random-points');
+const elem_points_raw = document.querySelector('#points-raw');
 
 const set_paused = value => {
     paused = value;
@@ -59,6 +53,7 @@ elem_reset.addEventListener('click', () => {
     vm.reset();
     vm.init();
     set_paused(temp);
+    override_raw_points();
     render();
 });
 
@@ -68,6 +63,7 @@ elem_clear.addEventListener('click', () => {
     vm = new wasm.ViewModel(bbox);
     vm.init();
     set_paused(temp);
+    override_raw_points();
     render();
 });
 
@@ -81,12 +77,11 @@ elem_add_points.addEventListener('click', () => {
         const y = rand_range(0, 1e9) / 1e7;
         vm.add_point(x, y);
     }
-
     vm.init();
     set_paused(temp);
+    override_raw_points();
     render();
 });
-
 
 elem_speed.addEventListener('input', _event => {
     const t = parseInt(elem_speed.value) / 100.0;
@@ -96,35 +91,74 @@ elem_speed.addEventListener('input', _event => {
 });
 elem_speed.dispatchEvent(new PointerEvent('input'));
 
-const throttle = (f, limit) => {
-    let inThrottle;
-    return (...args) => {
-        if (!inThrottle) {
-            f(...args);
-            inThrottle = true;
-            setTimeout(() => inThrottle = false, limit);
-        }
-    };
+const override_raw_points = () => {
+    const n = vm.get_num_points();
+    const points = vm.get_points();
+
+    const buf = [`${n}`];
+    for (let i = 0; i < n; i++) {
+        const x = points[i * 2];
+        const y = points[i * 2 + 1];
+        buf.push(`${x} ${y}`);
+    }
+    elem_points_raw.value = buf.join('\n');
 };
+override_raw_points();
+
+elem_points_raw.addEventListener('input', throttle(event => {
+    const tokens = event.target.value.split(/\s+/);
+    const points = [];
+    try {
+        const n = parseInt(tokens[0]);
+        for (let i = 0; i < n; i++) {
+            const x = parseFloat(tokens[i * 2 + 1]);
+            const y = parseFloat(tokens[i * 2 + 2]);
+            if (isNaN(x) || isNaN(y)) {
+                throw new Error('NaN');
+            }
+            points.push([x, y]);
+        }
+    } catch (e) {
+        console.log(e);
+        elem_points_raw.setAttribute("parse-error", true);
+        return;
+    }
+    elem_points_raw.setAttribute("parse-error", false);
+
+    let temp = paused;
+    set_paused(true);
+    vm = new wasm.ViewModel(bbox);
+    for (const [x, y] of points) {
+        vm.add_point(x, y);
+    }
+    vm.init();
+    set_paused(temp);
+    render();
+}, 100));
+
+
+const keymap = {};
+for (const elem of document.querySelectorAll('[data-hotkey]')) {
+    const key = elem.dataset.hotkey.toUpperCase();
+    if (elem.tagName === 'BUTTON'
+        || elem.tagName === 'INPUT' && elem.type === 'checkbox') {
+        keymap[key] = () => {
+            elem.click();
+            elem.focus();
+        };
+    }
+}
 
 // hotkeys
 document.addEventListener("keydown", event => {
-    switch (event.key.toUpperCase()) {
-        case 'P':
-            elem_play_pause.click();
-            break;
-        case 'S':
-            elem_step.click();
-            break;
-        case 'R':
-            elem_reset.click();
-            break;
-        case 'C':
-            elem_clear.click();
-            break;
-        case 'L':
-            elem_loop.click();
-            break;
+    const key = event.key.toUpperCase();
+    if (event.ctrlKey || event.altKey) {
+        return;
+    }
+    if (key in keymap) {
+        keymap[key]();
+    }
+    switch (key) {
         case '+':
         case '=':
             elem_speed.value = Math.min(100, parseInt(elem_speed.value) + 3);
@@ -146,8 +180,6 @@ elem_canvas.addEventListener('click', event => {
     set_paused(true);
     vm.reset();
 
-    console.log(event.clientX, event.clientY);
-    console.log(elem_canvas.clientWidth, elem_canvas.clientHeight);
     const u = (event.clientX - event.currentTarget.offsetLeft) / event.currentTarget.offsetWidth;
     const v = (event.clientY - event.currentTarget.offsetTop) / event.currentTarget.offsetHeight;
     const x = bbox.x + bbox.w * u;
@@ -155,11 +187,12 @@ elem_canvas.addEventListener('click', event => {
 
     vm.add_point(x, y);
     vm.init();
+    override_raw_points();
     set_paused(temp);
     render();
 });
 
-document.addEventListener('resize', () => { 
+document.addEventListener('resize', () => {
     const w = Math.min(elem_canvas.width, elem_canvas.height);
     elem_canvas.width = w;
     elem_canvas.height = w;
@@ -178,8 +211,7 @@ const render = throttle(() => {
             const w = Math.min(elem_canvas.clientWidth, elem_canvas.clientHeight);
             elem_canvas.width = w;
             elem_canvas.height = w;
-        
-            console.log(elem_canvas.width, elem_canvas.height);
+
             const ctx = elem_canvas.getContext('2d');
             ctx.canvas.width = elem_canvas.clientWidth;
             ctx.canvas.height = elem_canvas.clientHeight;

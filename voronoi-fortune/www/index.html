@@ -25,26 +25,36 @@
           </p>
         </header>
         <div id="control" class="flex">
-          <div><span><button id="play-pause" paused="false">(P) Play/Pause</button></span></div>
+          <div><span><button id="play-pause" paused="false" data-hotkey="P">(P) Play/Pause</button></span></div>
           <div><span>
               <label>
-                <input type="checkbox" id="loop">
+                <input type="checkbox" id="loop" data-hotkey="L">
                 <span class="toggle button">(L) Loop</span>
               </label>
             </span></div>
-          <div><span><button id="step">(S) Step</button></span></div>
-          <div><span><button id="reset">(R) Reset</button></span></div>
-          <div><span><button id="clear" class="error">(C) Clear</button></span></div>
+          <div><span><button id="step" data-hotkey="S">(S) Step</button></span></div>
+          <div><span><button id="reset" data-hotkey="R">(R) Reset</button></span></div>
+          <div><span><button id="clear" class="error" data-hotkey="C">(C) Clear</button></span></div>
           <div class="full"><span>
-              <label><button id="add-random-points" class="stack">(A) Add random points</button></label>
+              <label><button id="add-random-points" class="stack" data-hotkey="D"> (D) Add random
+                  points</button></label>
               <label><input id="num-of-random-points" type="number" min="1" max="1000000" placeholder="number of points"
                   class="stack"></input></label>
             </span></div>
           <div class="full">
+            <span class="button stack">
+              Raw input
+            </span>
+            <textarea id="points-raw" class="stack" autocomplete="off" autocorrect="off" autocapitalize="off"
+              spellcheck="false" parse-error="false" rows="4"></textarea>
+          </div>
+          <div class="full">
             <span class="button stack"> (+/-) Speed:
               <span id="speed-label"></span>
             </span>
-            <span class="stack"> <input type="range" id="speed" min="0" max="100" value="10"> </span>
+            <span class="stack">
+              <input type="range" id="speed" min="0" max="100" value="10"></input>
+            </span>
           </div>
         </div>
       </aside>

@@ -12,11 +12,6 @@ main {
     min-width: 400px;
 }
 
-#canvas-wrapper {
-    display: flex;
-    justify-content: start;
-}
-
 .label {
     font-size: inherit;
 }
@@ -38,12 +33,12 @@ input[type="range"] {
     justify-content: center;
     border: 2px solid black;
     border-radius: 3px;
-    margin: 10px;
+    // margin: 10px;
 
     max-height: min(90vh, 90vw);
     max-width: min(90vh, 90vw);
     width: 100%;
-    height: 100%;
+    height: width;
     min-height: 500px;
     min-width: 500px;
     aspect-ratio: 1;

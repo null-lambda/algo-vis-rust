@@ -1,5 +1,5 @@
 import * as wasm from "algo-vis-rust";
-import css_voronoi from 'raw-loader!./voronoi.css';
+import css_voronoi from '!!raw-loader!./voronoi.css';
 const styles_voronoi = `<style>${css_voronoi}</style>`;
 
 let bbox = new wasm.BBox(-100, -100, 300, 300);
@@ -159,6 +159,14 @@ elem_canvas.addEventListener('click', event => {
     render();
 });
 
+document.addEventListener('resize', () => { 
+    const w = Math.min(elem_canvas.width, elem_canvas.height);
+    elem_canvas.width = w;
+    elem_canvas.height = w;
+    render();
+});
+
+
 const render = throttle(() => {
     const [svg_header, svg_rest] = vm.render_to_svg();
     const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
@@ -167,6 +175,11 @@ const render = throttle(() => {
     const img = new Image();
     img.addEventListener('load', () => {
         requestAnimationFrame(() => {
+            const w = Math.min(elem_canvas.clientWidth, elem_canvas.clientHeight);
+            elem_canvas.width = w;
+            elem_canvas.height = w;
+        
+            console.log(elem_canvas.width, elem_canvas.height);
             const ctx = elem_canvas.getContext('2d');
             ctx.canvas.width = elem_canvas.clientWidth;
             ctx.canvas.height = elem_canvas.clientHeight;

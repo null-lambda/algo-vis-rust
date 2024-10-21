@@ -149,21 +149,30 @@ impl SiteMarker {
 }
 
 #[wasm_bindgen]
+#[derive(Clone, Copy, Debug)]
+pub struct BBox {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[wasm_bindgen]
 pub struct ViewModel {
-    bbox: [f64; 4],
+    bbox: BBox,
     model: Builder,
 }
 
 #[wasm_bindgen]
 impl ViewModel {
     #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
+    pub fn new(bbox: BBox) -> Self {
         if cfg!(debug_assertions) {
             crate::utils::set_panic_hook();
         }
 
         Self {
-            bbox: [-100.0, -100.0, 300.0, 300.0],
+            bbox,
             model: Builder::new(),
         }
     }
@@ -211,13 +220,13 @@ impl ViewModel {
             directrix += 1e-9;
 
             write!(svg, "{}", Open("g class='parabola'")).unwrap();
-            let breakpoints: Vec<f64> = iter::once(self.bbox[0])
+            let breakpoints: Vec<f64> = iter::once(self.bbox.x)
                 .chain(
                     sites_inorder
                         .windows(2)
                         .map(|t| geometry::breakpoint_x(t[0], t[1], directrix)),
                 )
-                .chain(iter::once(self.bbox[0] + self.bbox[2]))
+                .chain(iter::once(self.bbox.x + self.bbox.w))
                 .collect();
 
             for i in 0..sites_inorder.len() {
@@ -340,7 +349,10 @@ impl ViewModel {
         write!(
             svg,
             r#"<line x1="{}" y1="{}" x2="{}" y2="{}" class="sweepline"/>"#,
-            self.bbox[0], directrix, self.bbox[2], directrix,
+            self.bbox.x,
+            directrix,
+            self.bbox.x + self.bbox.w,
+            directrix,
         )
         .unwrap();
     }
@@ -352,7 +364,7 @@ impl ViewModel {
         write!(
             svg,
             r#"<svg class="voronoi" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg">"#,
-            bbox[0], bbox[1], bbox[2], bbox[3]
+            bbox.x, bbox.y, bbox.w, bbox.h
         )
         .unwrap();
 

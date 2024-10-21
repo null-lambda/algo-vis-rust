@@ -219,6 +219,10 @@ impl ViewModel {
             .flat_map(|p| vec![p[0], p[1]])
             .collect()
     }
+    
+    pub fn set_bbox(&mut self, bbox: &BBox) {
+        self.bbox = *bbox;
+    }
 
     fn gen_site_marker(&self) -> HashMap<usize, SiteMarker> {
         let mut site_marker = HashMap::new();

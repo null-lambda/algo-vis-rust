@@ -1,5 +1,8 @@
 import * as wasm from "algo-vis-rust";
+import css_voronoi from 'raw-loader!./voronoi.css';
+const styles_voronoi = `<style>${css_voronoi}</style>`;
 
+let bbox = new wasm.BBox(-100, -100, 300, 300);
 let seed = 42;
 const rand_next = () => {
     seed = ((seed * 166455) + 10139043) % 0xffffffff;
@@ -9,7 +12,7 @@ const rand_range = (a, b) => {
     return a + rand_next() % (b - a + 1);
 };
 
-let vm = new wasm.ViewModel();
+let vm = new wasm.ViewModel(bbox);
 for (let i = 0; i < 15; i++) {
     const x = rand_range(0, 100000) / 1000;
     const y = rand_range(0, 100000) / 1000;
@@ -62,7 +65,7 @@ elem_reset.addEventListener('click', () => {
 elem_clear.addEventListener('click', () => {
     let temp = paused;
     set_paused(true);
-    vm = new wasm.ViewModel();
+    vm = new wasm.ViewModel(bbox);
     vm.init();
     set_paused(temp);
     render();
@@ -135,32 +138,20 @@ document.addEventListener("keydown", event => {
     }
 });
 
-const elem_canvas = document.querySelector("#canvas");
-let svg_screen_ctm = null;
 
+const elem_canvas_wrapper = document.querySelector('#canvas-wrapper');
+const elem_canvas = document.querySelector('#canvas');
 elem_canvas.addEventListener('click', event => {
-    console.log(123);
-    const elem_svg = elem_canvas.querySelector('svg');
-    console.log(elem_svg);
-    if (elem_svg) {
-        svg_screen_ctm = elem_svg.getScreenCTM();
-    }
-    if (!svg_screen_ctm) {
-        return;
-    }
-
     let temp = paused;
     set_paused(true);
     vm.reset();
 
-    const svg_point = elem_svg.createSVGPoint();
-    svg_point.x = event.clientX;
-    svg_point.y = event.clientY;
-
-    const svg_coords = svg_point.matrixTransform(svg_screen_ctm.inverse());
-    const x = svg_coords.x;
-    const y = svg_coords.y;
-    console.log(x, y);
+    console.log(event.clientX, event.clientY);
+    console.log(elem_canvas.clientWidth, elem_canvas.clientHeight);
+    const u = (event.clientX - event.currentTarget.offsetLeft) / event.currentTarget.offsetWidth;
+    const v = (event.clientY - event.currentTarget.offsetTop) / event.currentTarget.offsetHeight;
+    const x = bbox.x + bbox.w * u;
+    const y = bbox.y + bbox.h * v;
 
     vm.add_point(x, y);
     vm.init();
@@ -169,9 +160,23 @@ elem_canvas.addEventListener('click', event => {
 });
 
 const render = throttle(() => {
-    requestAnimationFrame(() => {
-        elem_canvas.innerHTML = vm.render_to_svg();
+    const [svg_header, svg_rest] = vm.render_to_svg();
+    const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
+    const domURL = window.URL || window.webkitURL || window;
+    const url = domURL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const img = new Image();
+    img.addEventListener('load', () => {
+        requestAnimationFrame(() => {
+            const ctx = elem_canvas.getContext('2d');
+            ctx.canvas.width = elem_canvas.clientWidth;
+            ctx.canvas.height = elem_canvas.clientHeight;
+
+            ctx.drawImage(img, 0, 0);
+            domURL.revokeObjectURL(url);
+        });
     });
+
+    img.src = url;
 }, 1000 / 30);
 
 

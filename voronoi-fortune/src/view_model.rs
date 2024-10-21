@@ -158,6 +158,14 @@ pub struct BBox {
 }
 
 #[wasm_bindgen]
+impl BBox {
+    #[wasm_bindgen(constructor)]
+    pub fn new(x: f64, y: f64, w: f64, h: f64) -> Self {
+        Self { x, y, w, h }
+    }
+}
+
+#[wasm_bindgen]
 pub struct ViewModel {
     bbox: BBox,
     model: Builder,
@@ -166,7 +174,7 @@ pub struct ViewModel {
 #[wasm_bindgen]
 impl ViewModel {
     #[wasm_bindgen(constructor)]
-    pub fn new(bbox: BBox) -> Self {
+    pub fn new(&bbox: &BBox) -> Self {
         if cfg!(debug_assertions) {
             crate::utils::set_panic_hook();
         }
@@ -357,12 +365,13 @@ impl ViewModel {
         .unwrap();
     }
 
-    pub fn render_to_svg(&self) -> String {
-        let mut svg: Vec<u8> = vec![];
+    pub fn render_to_svg(&self) -> Vec<String> {
+        let mut header: Vec<u8> = vec![];
+        let mut rest: Vec<u8> = vec![];
 
         let bbox = self.bbox;
         write!(
-            svg,
+            header,
             r#"<svg class="voronoi" viewBox="{} {} {} {}" xmlns="http://www.w3.org/2000/svg">"#,
             bbox.x, bbox.y, bbox.w, bbox.h
         )
@@ -370,16 +379,18 @@ impl ViewModel {
 
         if !self.get_points().is_empty() {
             let mut site_markers = self.gen_site_marker();
-            self.render_half_edges(&mut svg);
-            self.render_circ_events(&mut svg, &mut site_markers);
-            self.render_beachlines(&mut svg, &mut site_markers);
-            self.render_sweepline(&mut svg);
-            self.render_sites(&mut svg, &site_markers);
+            self.render_half_edges(&mut rest);
+            self.render_circ_events(&mut rest, &mut site_markers);
+            self.render_beachlines(&mut rest, &mut site_markers);
+            self.render_sweepline(&mut rest);
+            self.render_sites(&mut rest, &site_markers);
         }
 
-        write!(svg, "</svg>").unwrap();
+        write!(rest, "</svg>").unwrap();
 
-        String::from_utf8(svg).unwrap()
+        let header = String::from_utf8(header).unwrap();
+        let rest = String::from_utf8(rest).unwrap();
+        vec![header, rest]
     }
 
     pub fn run(&mut self) {

@@ -84,6 +84,7 @@ pub struct SvgRenderer {
     buf: Vec<u8>,
     scale: [f64; 2],
     trans: [f64; 2],
+    bbox: BBox,
 }
 
 impl SvgRenderer {
@@ -95,6 +96,7 @@ impl SvgRenderer {
             buf: vec![],
             scale,
             trans,
+            bbox,
         }
     }
 
@@ -156,13 +158,10 @@ impl SvgRenderer {
     }
 
     pub fn parabola(&mut self, directrix: f64, focus: Point<f64>, x_range: [f64; 2], style: &str) {
-        let focus = Point::new(self.transform_x(focus[0]), self.transform_y(focus[1]));
-        let directrix = self.transform_y(directrix);
-        let x_range = [self.transform_x(x_range[0]), self.transform_x(x_range[1])];
         let parabola = svg::Parabola::from_focus_directrix(focus, directrix);
         let [mut x0, mut x1] = x_range;
-        x0 = x0.max(0.0);
-        x1 = x1.min(300.0);
+        x0 = x0.max(self.bbox.x);
+        x1 = x1.min(self.bbox.x + self.bbox.w);
         let y0 = parabola.eval(x0);
         let y1 = parabola.eval(x1);
         if !parabola.a.is_finite() {
@@ -174,10 +173,13 @@ impl SvgRenderer {
         let dp0 = Point::new(1.0, 2.0 * parabola.a * (x0 - parabola.p));
         let dp1 = Point::new(1.0, 2.0 * parabola.a * (x1 - parabola.p));
         if let Some(p2) = geometry::line_intersection(p0, dp0, p1, dp1) {
+            let (x0, y0) = self.transform(x0, y0);
+            let (x1, y1) = self.transform(x1, y1);
+            let (x2, y2) = self.transform(p2[0], p2[1]);
             write!(
                 self.buf,
                 r#"<path d="M {} {} Q {} {} {} {}" fill="none" {}/>"#,
-                x0, y0, p2[0], p2[1], x1, y1, style
+                x0, y0, x2, y2, x1, y1, style
             )
             .unwrap();
         } else {
@@ -252,14 +254,20 @@ impl ViewModel {
             y1 = y1.max(p[1]);
         }
         crate::utils::console_log!("{:?} {:?} {:?} {:?}", x0, y0, x1, y1);
+        let xm = (x0 + x1) * 0.5;
+        let ym = (y0 + y1) * 0.5;
         let mut w = (x1 - x0).min(1e300).max(1e-300);
         let mut h = (y1 - y0).min(1e300).max(1e-300);
+
+        w = w.max(h) * 3.0;
+        h = w;
 
         if self.get_points_slice().len() == 1 {
             w = 300.0;
             h = 300.0;
         }
-        BBox::new(x0 - w * 1., y0 - w * 1., w * 3.0, h * 3.0)
+        self.bbox = BBox::new(xm - w * 0.5, ym - h * 0.5, w, h);
+        self.bbox
     }
 
     fn gen_site_marker(&self) -> HashMap<usize, SiteMarker> {

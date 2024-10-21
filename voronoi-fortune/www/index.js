@@ -107,10 +107,14 @@ const override_raw_points = () => {
 override_raw_points();
 
 elem_points_raw.addEventListener('input', throttle(event => {
-    const tokens = event.target.value.split(/\s+/);
+    const tokens = event.target.value.split(/\s+/).filter(s => s.length != 0);
     const points = [];
     try {
+        console.log(tokens);
         const n = parseInt(tokens[0]);
+        if (tokens.length < 2 * n + 1) {
+            throw new Error(`Invalid array length: 2n=${2 * n} coordinates expected, ${tokens.length - 1} given`);
+        }
         for (let i = 0; i < n; i++) {
             const x = parseFloat(tokens[i * 2 + 1]);
             const y = parseFloat(tokens[i * 2 + 2]);
@@ -175,8 +179,9 @@ document.addEventListener("keydown", event => {
 });
 
 const client_to_viewbox = (event) => {
-    const u = (event.clientX - event.currentTarget.offsetLeft) / event.currentTarget.offsetWidth;
-    const v = (event.clientY - event.currentTarget.offsetTop) / event.currentTarget.offsetHeight;
+    const rect = canvas.getBoundingClientRect();
+    const u = (event.clientX - rect.left) / rect.width;
+    const v = (event.clientY - rect.top) / rect.height;
     const x = bbox.x + bbox.w * u;
     const y = bbox.y + bbox.h * v;
     return [x, y];
@@ -213,11 +218,12 @@ const onZoom = (factor, [mouse_x, mouse_y]) => {
     translate([mouse_x, mouse_y])(bbox);
 };
 elem_canvas.addEventListener('wheel', event => {
-    const factor = 1 + event.deltaY / 1000;
+    const factor = 1 + event.deltaY / 300;
     const [x, y] = client_to_viewbox(event);
     onZoom(factor, [x, y]);
     vm.set_bbox(bbox);
     render();
+    event.preventDefault();
 });
 
 document.addEventListener('resize', () => {
@@ -252,7 +258,6 @@ const render_loop = async () => {
         const [svg_header, svg_rest] = vm.render_to_svg();
         const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
         const domURL = window.URL || window.webkitURL || window;
-        console.log(svg);
         const url = domURL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
         const img = new Image();
         await new Promise(resolve => {

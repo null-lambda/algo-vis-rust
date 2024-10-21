@@ -46,113 +46,6 @@
 /******/ 		return __webpack_require__.p + "" + chunkId + ".bootstrap.js"
 /******/ 	}
 /******/
-/******/ 	// object to store loaded and loading wasm modules
-/******/ 	var installedWasmModules = {};
-/******/
-/******/ 	function promiseResolve() { return Promise.resolve(); }
-/******/
-/******/ 	var wasmImportObjects = {
-/******/ 		"../pkg/algo_vis_rust_bg.wasm": function() {
-/******/ 			return {
-/******/ 				"./algo_vis_rust_bg.js": {
-/******/ 					"__wbg_alert_7780d45e702ac6c8": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_alert_7780d45e702ac6c8"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbindgen_object_drop_ref": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_object_drop_ref"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_crypto_1d1f22824a6a080c": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_crypto_1d1f22824a6a080c"](p0i32);
-/******/ 					},
-/******/ 					"__wbindgen_is_object": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_is_object"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_process_4a72847cc503995b": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_process_4a72847cc503995b"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_versions_f686565e586dd935": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_versions_f686565e586dd935"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_node_104a2ff8d6ea03a2": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_node_104a2ff8d6ea03a2"](p0i32);
-/******/ 					},
-/******/ 					"__wbindgen_is_string": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_is_string"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_require_cca90b1a94a0255b": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_require_cca90b1a94a0255b"]();
-/******/ 					},
-/******/ 					"__wbindgen_string_new": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_string_new"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbg_msCrypto_eb05e62b530a1508": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_msCrypto_eb05e62b530a1508"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_randomFillSync_5c9c955aa56b6049": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_randomFillSync_5c9c955aa56b6049"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbg_getRandomValues_3aa56aa6edec874c": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_getRandomValues_3aa56aa6edec874c"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbindgen_object_clone_ref": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_object_clone_ref"](p0i32);
-/******/ 					},
-/******/ 					"__wbindgen_is_function": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_is_function"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_newnoargs_1ede4bf2ebbaaf43": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_newnoargs_1ede4bf2ebbaaf43"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbg_call_a9ef466721e824f2": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_call_a9ef466721e824f2"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbg_self_bf91bf94d9e04084": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_self_bf91bf94d9e04084"]();
-/******/ 					},
-/******/ 					"__wbg_window_52dd9f07d03fd5f8": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_window_52dd9f07d03fd5f8"]();
-/******/ 					},
-/******/ 					"__wbg_globalThis_05c129bf37fcf1be": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_globalThis_05c129bf37fcf1be"]();
-/******/ 					},
-/******/ 					"__wbg_global_3eca19bb09e9c484": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_global_3eca19bb09e9c484"]();
-/******/ 					},
-/******/ 					"__wbindgen_is_undefined": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_is_undefined"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_call_3bfa248576352471": function(p0i32,p1i32,p2i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_call_3bfa248576352471"](p0i32,p1i32,p2i32);
-/******/ 					},
-/******/ 					"__wbg_buffer_ccaed51a635d8a2d": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_buffer_ccaed51a635d8a2d"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_newwithbyteoffsetandlength_7e3eb787208af730": function(p0i32,p1i32,p2i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_newwithbyteoffsetandlength_7e3eb787208af730"](p0i32,p1i32,p2i32);
-/******/ 					},
-/******/ 					"__wbg_new_fec2611eb9180f95": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_new_fec2611eb9180f95"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_set_ec2fcf81bc573fd9": function(p0i32,p1i32,p2i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_set_ec2fcf81bc573fd9"](p0i32,p1i32,p2i32);
-/******/ 					},
-/******/ 					"__wbg_newwithlength_76462a666eca145f": function(p0i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_newwithlength_76462a666eca145f"](p0i32);
-/******/ 					},
-/******/ 					"__wbg_subarray_975a06f9dbd16995": function(p0i32,p1i32,p2i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbg_subarray_975a06f9dbd16995"](p0i32,p1i32,p2i32);
-/******/ 					},
-/******/ 					"__wbindgen_throw": function(p0i32,p1i32) {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_throw"](p0i32,p1i32);
-/******/ 					},
-/******/ 					"__wbindgen_memory": function() {
-/******/ 						return installedModules["../pkg/algo_vis_rust_bg.js"].exports["__wbindgen_memory"]();
-/******/ 					}
-/******/ 				}
-/******/ 			};
-/******/ 		},
-/******/ 	};
-/******/
 /******/ 	// The require function
 /******/ 	function __webpack_require__(moduleId) {
 /******/
@@ -236,38 +129,6 @@
 /******/ 				document.head.appendChild(script);
 /******/ 			}
 /******/ 		}
-/******/
-/******/ 		// Fetch + compile chunk loading for webassembly
-/******/
-/******/ 		var wasmModules = {"0":["../pkg/algo_vis_rust_bg.wasm"]}[chunkId] || [];
-/******/
-/******/ 		wasmModules.forEach(function(wasmModuleId) {
-/******/ 			var installedWasmModuleData = installedWasmModules[wasmModuleId];
-/******/
-/******/ 			// a Promise means "currently loading" or "already loaded".
-/******/ 			if(installedWasmModuleData)
-/******/ 				promises.push(installedWasmModuleData);
-/******/ 			else {
-/******/ 				var importObject = wasmImportObjects[wasmModuleId]();
-/******/ 				var req = fetch(__webpack_require__.p + "" + {"../pkg/algo_vis_rust_bg.wasm":"143fed4fced38ac4b8a3"}[wasmModuleId] + ".module.wasm");
-/******/ 				var promise;
-/******/ 				if(importObject instanceof Promise && typeof WebAssembly.compileStreaming === 'function') {
-/******/ 					promise = Promise.all([WebAssembly.compileStreaming(req), importObject]).then(function(items) {
-/******/ 						return WebAssembly.instantiate(items[0], items[1]);
-/******/ 					});
-/******/ 				} else if(typeof WebAssembly.instantiateStreaming === 'function') {
-/******/ 					promise = WebAssembly.instantiateStreaming(req, importObject);
-/******/ 				} else {
-/******/ 					var bytesPromise = req.then(function(x) { return x.arrayBuffer(); });
-/******/ 					promise = bytesPromise.then(function(bytes) {
-/******/ 						return WebAssembly.instantiate(bytes, importObject);
-/******/ 					});
-/******/ 				}
-/******/ 				promises.push(installedWasmModules[wasmModuleId] = promise.then(function(res) {
-/******/ 					return __webpack_require__.w[wasmModuleId] = (res.instance || res).exports;
-/******/ 				}));
-/******/ 			}
-/******/ 		});
 /******/ 		return Promise.all(promises);
 /******/ 	};
 /******/
@@ -326,9 +187,6 @@
 /******/ 	// on error function for async loading
 /******/ 	__webpack_require__.oe = function(err) { console.error(err); throw err; };
 /******/
-/******/ 	// object with all WebAssembly.instance exports
-/******/ 	__webpack_require__.w = {};
-/******/
 /******/ 	var jsonpArray = window["webpackJsonp"] = window["webpackJsonp"] || [];
 /******/ 	var oldJsonpFunction = jsonpArray.push.bind(jsonpArray);
 /******/ 	jsonpArray.push = webpackJsonpCallback;
@@ -350,7 +208,7 @@
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-eval("// A dependency graph that contains any wasm must all be imported\n// asynchronously. This `bootstrap.js` file does the single async import, so\n// that no one else needs to worry about it again.\n__webpack_require__.e(/*! import() */ 0).then(__webpack_require__.bind(null, /*! ./index.js */ \"./index.js\"))\n  .catch(e => console.error(\"Error importing `index.js`:\", e));\n\n\n//# sourceURL=webpack:///./bootstrap.js?");
+eval("// A dependency graph that contains any wasm must all be imported\n// asynchronously. This `bootstrap.js` file does the single async import, so\n// that no one else needs to worry about it again.\n__webpack_require__.e(/*! import() */ 0).then(__webpack_require__.t.bind(null, /*! ./index.js */ \"./index.js\", 7))\n  .catch(e => console.error(\"Error importing `index.js`:\", e));\n\n\n//# sourceURL=webpack:///./bootstrap.js?");
 
 /***/ })
 

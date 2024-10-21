@@ -1,0 +1,41 @@
+.voronoi {
+  stroke-width: 0.5;
+}
+.voronoi .site {
+  fill: black;
+}
+.voronoi .site > .beachline {
+  fill: indigo;
+}
+.voronoi .site > .preprocess {
+  fill: gray;
+}
+.voronoi .site > .complete {
+  fill: salmon;
+}
+.voronoi .parabola,
+.voronoi .breakpoint,
+.voronoi .beachline {
+  stroke: indigo;
+}
+.voronoi .circumcircle,
+.voronoi .event-circle {
+  stroke: lightgreen;
+}
+.voronoi .circumcircle {
+  fill: none;
+}
+.voronoi .sweepline {
+  stroke: black;
+}
+.voronoi .edge-delaunay {
+  stroke: salmon;
+}
+.voronoi .edge-voronoi {
+  stroke: lightgray;
+}
+.voronoi .vertex {
+  fill: lightgray;
+}
+
+/*# sourceMappingURL=voronoi.css.map */

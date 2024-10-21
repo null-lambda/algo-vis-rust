@@ -1,5 +1,5 @@
 import { throttle, sleep, rand_range } from './utils.js';
-import * as wasm from "../pkg/algo_vis_rust.js";
+import * as wasm from "algo-vis-rust";
 import * as styles from './index.scss';
 import css_voronoi from './voronoi.scss.raw';
 const styles_voronoi = `<style>${css_voronoi}</style>`;

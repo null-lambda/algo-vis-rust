@@ -6,7 +6,6 @@ module.exports = {
   output: {
     path: path.resolve(__dirname, "dist"),
     filename: "bootstrap.js",
-    clean: true,
   },
   plugins: [
     new CopyWebpackPlugin(['index.html'])
@@ -22,8 +21,5 @@ module.exports = {
         use: ["style-loader", "css-loader", "sass-loader"],
       }
     ],
-  },
- experiments: {
-    asyncWebAssembly: true,
   },
 };

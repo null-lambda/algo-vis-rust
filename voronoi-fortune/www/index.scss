@@ -28,7 +28,6 @@ textarea {
     }
 }
 
-
 #play-pause[paused=true] {
     background-color: #ff851b;
 }
@@ -41,7 +40,6 @@ textarea {
     justify-content: center;
     border: 2px solid black;
     border-radius: 3px;
-    // margin: 10px;
 
     max-height: min(90vh, 90vw);
     max-width: min(90vh, 90vw);

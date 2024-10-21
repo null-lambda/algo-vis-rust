@@ -1,5 +1,5 @@
 import { throttle, sleep, rand_range } from './utils.js';
-import * as wasm from "algo-vis-rust";
+import * as wasm from "../pkg/algo_vis_rust.js";
 import * as styles from './index.scss';
 import css_voronoi from './voronoi.scss.raw';
 const styles_voronoi = `<style>${css_voronoi}</style>`;
@@ -173,23 +173,49 @@ document.addEventListener("keydown", event => {
     }
 });
 
+const client_to_viewbox = (event) => {
+    const u = (event.clientX - event.currentTarget.offsetLeft) / event.currentTarget.offsetWidth;
+    const v = (event.clientY - event.currentTarget.offsetTop) / event.currentTarget.offsetHeight;
+    const x = bbox.x + bbox.w * u;
+    const y = bbox.y + bbox.h * v;
+    return [x, y];
+};
 
-const elem_canvas_wrapper = document.querySelector('#canvas-wrapper');
 const elem_canvas = document.querySelector('#canvas');
 elem_canvas.addEventListener('click', event => {
     let temp = paused;
     set_paused(true);
     vm.reset();
 
-    const u = (event.clientX - event.currentTarget.offsetLeft) / event.currentTarget.offsetWidth;
-    const v = (event.clientY - event.currentTarget.offsetTop) / event.currentTarget.offsetHeight;
-    const x = bbox.x + bbox.w * u;
-    const y = bbox.y + bbox.h * v;
-
+    const [x, y] = client_to_viewbox(event);
     vm.add_point(x, y);
     vm.init();
     override_raw_points();
     set_paused(temp);
+    render();
+});
+
+
+const translate = ([dx, dy]) => bbox => {
+    bbox.x += dx;
+    bbox.y += dy;
+}
+const scale_at_origin = (factor) => bbox => {
+    bbox.x *= factor;
+    bbox.y *= factor;
+    bbox.w *= factor;
+    bbox.h *= factor;
+};
+const onZoom = (factor, [mouse_x, mouse_y]) => {
+    translate([-mouse_x, -mouse_y])(bbox);
+    scale_at_origin(factor)(bbox);
+    translate([mouse_x, mouse_y])(bbox);
+};
+elem_canvas.addEventListener('wheel', event => {
+    const factor = 1 + event.deltaY / 1000;
+    const [x, y] = client_to_viewbox(event);
+    onZoom(factor, [x, y]);
+    vm.set_bbox(bbox);
     render();
 });
 
@@ -201,12 +227,12 @@ document.addEventListener('resize', () => {
 });
 
 
-let should_render = false;  
+let should_render = false;
 const render = () => {
     should_render = true;
 };
 
-let t_last_render = Date.now(); 
+let t_last_render = Date.now();
 const dt_sleep_min = 1000 / 120;
 const dt_sleep_max = 1000 * 5;
 let dt_sleep = dt_sleep_min;
@@ -216,7 +242,7 @@ const render_loop = async () => {
         const t_start = Date.now();
 
         if (!should_render) {
-            await new Promise(resolve => {  
+            await new Promise(resolve => {
                 requestAnimationFrame(resolve);
             });
             continue;
@@ -225,6 +251,7 @@ const render_loop = async () => {
         const [svg_header, svg_rest] = vm.render_to_svg();
         const svg = [svg_header, styles_voronoi, svg_rest].join('\n');
         const domURL = window.URL || window.webkitURL || window;
+        console.log(svg);
         const url = domURL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
         const img = new Image();
         await new Promise(resolve => {
@@ -244,9 +271,9 @@ const render_loop = async () => {
         domURL.revokeObjectURL(url);
 
         should_render = false;
-        console.log('rendered');    
+        console.log('rendered');
 
-        await new Promise(resolve => {  
+        await new Promise(resolve => {
             requestAnimationFrame(resolve);
         });
 
@@ -263,13 +290,13 @@ const render_loop = async () => {
         } else {
             dt_sleep = Math.max(dt_sleep_min, dt_sleep / adaptivity);
         }
-        t_last_render = Date.now(); 
+        t_last_render = Date.now();
         console.log(`dt_sleep: ${dt_sleep}, dt_render: ${dt_render}, dt_period: ${dt_period}`);
 
         await sleep(dt_sleep);
     }
 };
-render_loop();  
+render_loop();
 
 const step = async () => {
     console.log('step');
